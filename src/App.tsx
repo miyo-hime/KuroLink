@@ -1,20 +1,44 @@
+import { useState } from "react";
+import type { ConnectionProfile } from "./lib/types";
+import ConnectionScreen from "./components/ConnectionScreen";
+import MainView from "./components/MainView";
 import "./App.css";
 
+type AppView = "connect" | "terminal";
+
 function App() {
+  const [view, setView] = useState<AppView>("connect");
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [profile, setProfile] = useState<ConnectionProfile | null>(null);
+
+  const handleConnected = (
+    sid: string,
+    _pid: string,
+    prof: ConnectionProfile,
+  ) => {
+    setSessionId(sid);
+    setProfile(prof);
+    setView("terminal");
+  };
+
+  const handleDisconnected = () => {
+    setSessionId(null);
+    setProfile(null);
+    setView("connect");
+  };
+
   return (
     <div className="app">
-      <div className="boot-screen">
-        <div className="logo">
-          <pre className="logo-ascii">{`
-╔═══════════════════════════╗
-║       K U R O L I N K     ║
-╚═══════════════════════════╝`}</pre>
-          <span className="version">v0.1.0 · kurobox</span>
-        </div>
-        <div className="status-line">
-          <span className="blink">▸</span> initializing...
-        </div>
-      </div>
+      {view === "connect" && (
+        <ConnectionScreen onConnected={handleConnected} />
+      )}
+      {view === "terminal" && sessionId && profile && (
+        <MainView
+          sessionId={sessionId}
+          profile={profile}
+          onDisconnected={handleDisconnected}
+        />
+      )}
     </div>
   );
 }

@@ -1,0 +1,29 @@
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.75rem;
+  height: 26px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-glow);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.stat-item {
+  color: var(--text-dim);
+  font-size: 0.65rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.stat-item:not(:last-child)::after {
+  content: "│";
+  margin-left: 0.25rem;
+  opacity: 0.3;
+}
+
+.stat-dim {
+  opacity: 0.5;
+}
