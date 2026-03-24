@@ -11,7 +11,9 @@ A desktop SSH client that looks like a mecha command console. Connect to your se
 - **xterm.js** terminal with WebGL rendering
 - **Multi-tab** terminals on a single SSH connection
 - **Live system stats** - CPU temp, memory, disk, network
-- **Connection profiles** - save your servers, auto-probe on launch
+- **Connection profiles** - save your servers, auto-probe on launch, delete the ones you regret
+- **Host key verification** - TOFU model, checks `~/.ssh/known_hosts`, yells at you if the key changes
+- **Connection drop detection** - knows when your SSH dies and tells you about it instead of sitting there like nothing happened
 - **Portable** -single `.exe`, config saves next to it, no installer
 - **~15MB binary** because Tauri exists
 
@@ -37,10 +39,10 @@ Profiles auto-save. The app remembers your last connection and auto-probes it on
 The live stats (CPU temp, memory, disk, network) are pulled by running standard Linux commands over SSH. Your target machine needs:
 
 - `free`, `df`, `awk`, `uptime` -if you're running any normal Linux distro these are already there. if they're not, something has gone wrong and you have bigger problems than KuroLink
-- `/sys/class/thermal/thermal_zone0/temp` -CPU temperature. works on Raspberry Pi OS out of the box. if your device doesn't have a thermal zone, CPU temp just won't show up. it's fine
-- `/sys/class/net/eth0/statistics/` -network throughput. currently hardcoded to `eth0` because it was 4am when I wrote this. if you're on WiFi (`wlan0`), network stats will read zero. sorry
+- `/sys/class/thermal/thermal_zone*/temp` -CPU temperature. auto-detects the `cpu-thermal` zone now (I finally fixed the hardcode). if your device doesn't have a thermal zone at all, CPU temp just won't show up. it's fine
+- network interface -auto-detected via `ip route show default`. works on eth0, wlan0, whatever your default route uses. the 4am `eth0` hardcode is gone, you're welcome
 
-tl;dr if it's a Raspberry Pi running Raspberry Pi OS, everything just works. if it's something else, most things will work and the rest will not show up.
+tl;dr if it's a Raspberry Pi running Raspberry Pi OS, everything just works. if it's something else, most things will work and the rest will gracefully not show up.
 
 ## building from source
 
@@ -58,7 +60,10 @@ Most people should just download the release. If you want to build it yourself, 
 - [x] Connection profiles
 - [x] Live system stats
 - [x] NERV/Gundam command console aesthetic
-- [ ] VNC desktop mode (noVNC embedded)
+- [x] Host key verification (TOFU)
+- [x] Connection drop detection + reconnect
+- [x] Auto-detect network interface and thermal zone (no more hardcodes at 4am)
+- [ ] VNC desktop mode (noVNC embedded) -the plumbing is there, the pixels are not
 - [ ] File browser / SCP transfers
 - [ ] WireGuard tunnel management
 

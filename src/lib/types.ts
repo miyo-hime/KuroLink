@@ -35,3 +35,6 @@ export interface TerminalTab {
   channelId: string;
   title: string;
 }
+
+export type ConnectionStatus = "connected" | "degraded" | "lost";
+export type MainMode = "cli" | "de";

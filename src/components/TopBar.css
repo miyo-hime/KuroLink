@@ -76,6 +76,13 @@
   font-size: 0.7rem;
 }
 
+.top-bar-status.status-warn {
+  color: var(--accent-warning);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
 .top-bar-latency {
   font-size: 0.7rem;
   font-variant-numeric: tabular-nums;
@@ -150,4 +157,59 @@
   background: rgba(232, 37, 78, 0.12);
   border-color: var(--accent-secondary);
   box-shadow: var(--glow-sm) rgba(232, 37, 78, 0.25);
+}
+
+/* ---- Disconnect confirmation ---- */
+
+.disconnect-confirm {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: 0.5rem;
+  animation: fade-in 0.15s ease-out;
+}
+
+.disconnect-confirm-label {
+  color: var(--accent-secondary);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  margin-right: 0.2rem;
+}
+
+.disconnect-confirm-btn {
+  background: transparent;
+  border: 1px solid;
+  font-family: inherit;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 0.15rem 0.5rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.confirm-yes {
+  color: var(--accent-secondary);
+  border-color: rgba(232, 37, 78, 0.4);
+}
+
+.confirm-yes:hover {
+  background: rgba(232, 37, 78, 0.12);
+  border-color: var(--accent-secondary);
+}
+
+.confirm-no {
+  color: var(--text-dim);
+  border-color: rgba(74, 74, 100, 0.3);
+}
+
+.confirm-no:hover {
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }

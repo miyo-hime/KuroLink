@@ -4,6 +4,7 @@ import {
   getProfiles,
   getLastProfile,
   saveProfile,
+  deleteProfile,
   probeHost,
   connectSsh,
 } from "../lib/ipc";
@@ -16,6 +17,15 @@ interface Props {
     profileId: string,
     profile: ConnectionProfile,
   ) => void;
+}
+
+function formatTimestamp(ts: string): string {
+  const num = Number(ts);
+  if (!isNaN(num) && num > 1e9) {
+    return new Date(num * 1000).toLocaleString();
+  }
+  const d = new Date(ts);
+  return isNaN(d.getTime()) ? ts : d.toLocaleString();
 }
 
 const DEFAULT_PROFILE: Omit<ConnectionProfile, "id" | "created_at"> = {
@@ -145,6 +155,7 @@ export default function ConnectionScreen({ onConnected }: Props) {
         {profiles.length > 0 && (
           <div className="profile-selector">
             <label>PROFILE</label>
+            <div className="profile-selector-row">
             <select
               value={selectedId || ""}
               onChange={(e) => {
@@ -173,6 +184,22 @@ export default function ConnectionScreen({ onConnected }: Props) {
                 </option>
               ))}
             </select>
+            {selectedId && (
+              <button
+                className="btn-delete-profile"
+                title="Delete profile"
+                onClick={async () => {
+                  await deleteProfile(selectedId);
+                  setProfiles((prev) => prev.filter((p) => p.id !== selectedId));
+                  setSelectedId(null);
+                  setForm({ ...DEFAULT_PROFILE });
+                  setStatus(null);
+                }}
+              >
+                DEL
+              </button>
+            )}
+            </div>
           </div>
         )}
 
@@ -341,7 +368,7 @@ export default function ConnectionScreen({ onConnected }: Props) {
         {/* Last session info */}
         {form.last_connected && (
           <div className="last-session">
-            last session: {form.last_connected}
+            last session: {formatTimestamp(form.last_connected)}
           </div>
         )}
       </div>

@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 
-use crate::config::{self, ConnectionProfile};
+use crate::config::ConnectionProfile;
 use crate::ssh::{self, ChannelInput, SshSession};
-use crate::state::{ActiveChannel, ActiveSession, AppState};
+use crate::state::{ActiveChannel, ActiveSession, AppState, ChannelKind};
 
 // -- Types --
 
@@ -34,14 +34,14 @@ pub struct SystemStats {
 // -- Config Commands --
 
 #[tauri::command]
-pub async fn get_profiles(app: AppHandle) -> Result<Vec<ConnectionProfile>, String> {
-    let config = config::load_config(&app)?;
+pub async fn get_profiles(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<ConnectionProfile>, String> {
+    let config = state.get_config(&app).await?;
     Ok(config.profiles)
 }
 
 #[tauri::command]
-pub async fn save_profile(app: AppHandle, profile: ConnectionProfile) -> Result<(), String> {
-    let mut config = config::load_config(&app)?;
+pub async fn save_profile(app: AppHandle, state: State<'_, AppState>, profile: ConnectionProfile) -> Result<(), String> {
+    let mut config = state.get_config(&app).await?;
 
     if let Some(existing) = config.profiles.iter_mut().find(|p| p.id == profile.id) {
         *existing = profile;
@@ -49,22 +49,22 @@ pub async fn save_profile(app: AppHandle, profile: ConnectionProfile) -> Result<
         config.profiles.push(profile);
     }
 
-    config::save_config(&app, &config)
+    state.update_config(&app, config).await
 }
 
 #[tauri::command]
-pub async fn delete_profile(app: AppHandle, profile_id: String) -> Result<(), String> {
-    let mut config = config::load_config(&app)?;
+pub async fn delete_profile(app: AppHandle, state: State<'_, AppState>, profile_id: String) -> Result<(), String> {
+    let mut config = state.get_config(&app).await?;
     config.profiles.retain(|p| p.id != profile_id);
     if config.last_profile_id.as_deref() == Some(&profile_id) {
         config.last_profile_id = None;
     }
-    config::save_config(&app, &config)
+    state.update_config(&app, config).await
 }
 
 #[tauri::command]
-pub async fn get_last_profile(app: AppHandle) -> Result<Option<ConnectionProfile>, String> {
-    let config = config::load_config(&app)?;
+pub async fn get_last_profile(app: AppHandle, state: State<'_, AppState>) -> Result<Option<ConnectionProfile>, String> {
+    let config = state.get_config(&app).await?;
     let profile = config
         .last_profile_id
         .and_then(|id| config.profiles.into_iter().find(|p| p.id == id));
@@ -113,8 +113,9 @@ async fn probe_host_inner(
         .ok()
         .map(|s| s.trim().to_string());
 
+    let thermal_zone = detect_thermal_zone(&mut session).await;
     let cpu_temp = session
-        .exec_command("cat /sys/class/thermal/thermal_zone0/temp")
+        .exec_command(&format!("cat {thermal_zone}/temp"))
         .await
         .ok()
         .and_then(|s| s.trim().parse::<f32>().ok())
@@ -156,12 +157,12 @@ pub async fn connect_ssh(
     let session_id = uuid::Uuid::new_v4().to_string();
 
     // Update last_connected on the profile
-    let mut config = config::load_config(&app)?;
+    let mut config = state.get_config(&app).await?;
     if let Some(profile) = config.profiles.iter_mut().find(|p| p.id == profile_id) {
         profile.last_connected = Some(chrono_now());
     }
     config.last_profile_id = Some(profile_id.clone());
-    config::save_config(&app, &config)?;
+    state.update_config(&app, config).await?;
 
     let active = ActiveSession {
         session_id: session_id.clone(),
@@ -181,9 +182,13 @@ pub async fn disconnect_ssh(
 ) -> Result<(), String> {
     let mut sessions = state.sessions.lock().await;
     if let Some(mut session) = sessions.remove(&session_id) {
-        // Close all channels
+        // Close all channels (match will expand when Vnc variant is added)
         for (_, channel) in session.channels.drain() {
-            let _ = channel.input_tx.send(ChannelInput::Close).await;
+            match channel.kind {
+                ChannelKind::Shell { input_tx } => {
+                    let _ = input_tx.send(ChannelInput::Close).await;
+                }
+            }
         }
         let _ = session.ssh.disconnect().await;
     }
@@ -208,13 +213,13 @@ pub async fn open_shell(
     let channel = session.ssh.open_shell(cols, rows).await?;
     let channel_id = uuid::Uuid::new_v4().to_string();
 
-    let input_tx = ssh::spawn_channel_io(app, channel_id.clone(), channel);
+    let input_tx = ssh::spawn_channel_io(app, session_id.clone(), channel_id.clone(), channel);
 
     session.channels.insert(
         channel_id.clone(),
         ActiveChannel {
             channel_id: channel_id.clone(),
-            input_tx,
+            kind: ChannelKind::Shell { input_tx },
         },
     );
 
@@ -233,7 +238,11 @@ pub async fn close_shell(
         .ok_or("Session not found")?;
 
     if let Some(channel) = session.channels.remove(&channel_id) {
-        let _ = channel.input_tx.send(ChannelInput::Close).await;
+        match channel.kind {
+            ChannelKind::Shell { input_tx } => {
+                let _ = input_tx.send(ChannelInput::Close).await;
+            }
+        }
     }
     Ok(())
 }
@@ -254,11 +263,14 @@ pub async fn write_to_shell(
         .get(&channel_id)
         .ok_or("Channel not found")?;
 
-    channel
-        .input_tx
-        .send(ChannelInput::Data(data.into_bytes()))
-        .await
-        .map_err(|e| format!("Failed to send data: {e}"))
+    match &channel.kind {
+        ChannelKind::Shell { input_tx } => {
+            input_tx
+                .send(ChannelInput::Data(data.into_bytes()))
+                .await
+                .map_err(|e| format!("Failed to send data: {e}"))
+        }
+    }
 }
 
 #[tauri::command]
@@ -278,11 +290,14 @@ pub async fn resize_shell(
         .get(&channel_id)
         .ok_or("Channel not found")?;
 
-    channel
-        .input_tx
-        .send(ChannelInput::Resize { cols, rows })
-        .await
-        .map_err(|e| format!("Failed to send resize: {e}"))
+    match &channel.kind {
+        ChannelKind::Shell { input_tx } => {
+            input_tx
+                .send(ChannelInput::Resize { cols, rows })
+                .await
+                .map_err(|e| format!("Failed to send resize: {e}"))
+        }
+    }
 }
 
 #[tauri::command]
@@ -309,9 +324,10 @@ pub async fn fetch_system_stats(
         .get_mut(&session_id)
         .ok_or("Session not found")?;
 
+    let thermal_zone = detect_thermal_zone(&mut session.ssh).await;
     let cpu_temp = session
         .ssh
-        .exec_command("cat /sys/class/thermal/thermal_zone0/temp")
+        .exec_command(&format!("cat {thermal_zone}/temp"))
         .await
         .ok()
         .and_then(|s| s.trim().parse::<f32>().ok())
@@ -354,9 +370,10 @@ pub async fn fetch_system_stats(
         .trim()
         .to_string();
 
+    let net_iface = detect_net_iface(&mut session.ssh).await;
     let net_rx_bytes: u64 = session
         .ssh
-        .exec_command("cat /sys/class/net/eth0/statistics/rx_bytes 2>/dev/null || echo 0")
+        .exec_command(&format!("cat /sys/class/net/{net_iface}/statistics/rx_bytes 2>/dev/null || echo 0"))
         .await
         .unwrap_or_else(|_| "0".to_string())
         .trim()
@@ -365,7 +382,7 @@ pub async fn fetch_system_stats(
 
     let net_tx_bytes: u64 = session
         .ssh
-        .exec_command("cat /sys/class/net/eth0/statistics/tx_bytes 2>/dev/null || echo 0")
+        .exec_command(&format!("cat /sys/class/net/{net_iface}/statistics/tx_bytes 2>/dev/null || echo 0"))
         .await
         .unwrap_or_else(|_| "0".to_string())
         .trim()
@@ -408,11 +425,29 @@ fn parse_disk(output: &str) -> (Option<f32>, Option<String>) {
 }
 
 fn chrono_now() -> String {
-    // Simple ISO 8601 timestamp without chrono crate
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    // Return unix timestamp as string — good enough for MVP
     format!("{now}")
+}
+
+async fn detect_thermal_zone(ssh: &mut SshSession) -> String {
+    ssh.exec_command(
+        "for z in /sys/class/thermal/thermal_zone*/type; do \
+         if [ \"$(cat \"$z\")\" = \"cpu-thermal\" ]; then dirname \"$z\"; break; fi; \
+         done",
+    )
+    .await
+    .map(|s| s.trim().to_string())
+    .unwrap_or_else(|_| "/sys/class/thermal/thermal_zone0".to_string())
+}
+
+async fn detect_net_iface(ssh: &mut SshSession) -> String {
+    ssh.exec_command("ip route show default | awk '{print $5}' | head -1")
+        .await
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "eth0".to_string())
 }
