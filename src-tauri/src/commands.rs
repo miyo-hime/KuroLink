@@ -103,7 +103,7 @@ async fn probe_host_inner(
     username: &str,
     key_path: &str,
 ) -> Result<HostStatus, String> {
-    let mut session = SshSession::connect(host, port, username, key_path).await?;
+    let mut session = SshSession::connect(host, port, username, key_path, None).await?;
 
     let latency = session.ping().await?;
 
@@ -152,8 +152,9 @@ pub async fn connect_ssh(
     port: u16,
     username: String,
     key_path: String,
+    passphrase: Option<String>,
 ) -> Result<String, String> {
-    let session = SshSession::connect(&host, port, &username, &key_path).await?;
+    let session = SshSession::connect(&host, port, &username, &key_path, passphrase.as_deref()).await?;
     let session_id = uuid::Uuid::new_v4().to_string();
 
     // Update last_connected on the profile
