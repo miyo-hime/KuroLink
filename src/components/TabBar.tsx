@@ -12,12 +12,13 @@ interface Props {
 export default function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab, onNewTab }: Props) {
   return (
     <div className="tab-bar">
-      {tabs.map((tab) => (
+      {tabs.map((tab, index) => (
         <div
           key={tab.channelId}
           className={`tab ${tab.channelId === activeTabId ? "tab-active" : ""}`}
           onClick={() => onSelectTab(tab.channelId)}
         >
+          <span className="tab-index">{index + 1}.</span>
           <span className="tab-title">{tab.title}</span>
           {tabs.length > 1 && (
             <button

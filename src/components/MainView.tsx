@@ -36,8 +36,8 @@ export default function MainView({ sessionId, profile, onDisconnected }: Props) 
     mountedRef.current = true;
     createNewTab();
 
-    // Poll stats and latency
-    const interval = setInterval(async () => {
+    // Fetch stats immediately, then poll
+    const pollStats = async () => {
       try {
         const [ping, sysStats] = await Promise.all([
           pingSession(sessionId).catch(() => null),
@@ -53,7 +53,10 @@ export default function MainView({ sessionId, profile, onDisconnected }: Props) 
       } catch {
         // Session might be gone
       }
-    }, STATS_POLL_MS);
+    };
+
+    pollStats();
+    const interval = setInterval(pollStats, STATS_POLL_MS);
 
     return () => clearInterval(interval);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

@@ -1,0 +1,48 @@
+.logo-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  will-change: filter;
+  animation: logo-glow 3s ease-in-out infinite;
+}
+
+.logo-svg {
+  width: 180px;
+  height: auto;
+  color: var(--accent-primary);
+}
+
+.logo-frame {
+  transition: stroke-opacity var(--transition-normal);
+}
+
+.logo-frame-inner {
+  stroke-dasharray: 4 8;
+}
+
+.logo-mark {
+  filter: drop-shadow(0 0 3px rgba(0, 212, 255, 0.3));
+}
+
+.logo-title {
+  font-family: "JetBrains Mono", "IBM Plex Mono", monospace;
+  text-shadow: 0 0 8px rgba(0, 212, 255, 0.4);
+}
+
+.logo-subtitle {
+  font-family: "JetBrains Mono", "IBM Plex Mono", monospace;
+}
+
+.logo-accents line {
+  stroke-dasharray: none;
+  transition: opacity var(--transition-normal);
+}
+
+.logo-wrapper:hover .logo-accents line {
+  opacity: 0.6;
+}
+
+.logo-wrapper:hover .logo-frame-inner {
+  opacity: 0.5;
+}

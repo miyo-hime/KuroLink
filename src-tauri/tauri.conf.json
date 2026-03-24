@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "KuroLink",
-        "width": 1024,
-        "height": 700,
+        "width": 1100,
+        "height": 950,
         "resizable": true,
         "decorations": true
       }

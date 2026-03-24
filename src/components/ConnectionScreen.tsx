@@ -7,6 +7,7 @@ import {
   probeHost,
   connectSsh,
 } from "../lib/ipc";
+import KuroLinkLogo from "./KuroLinkLogo";
 import "./ConnectionScreen.css";
 
 interface Props {
@@ -26,6 +27,12 @@ const DEFAULT_PROFILE: Omit<ConnectionProfile, "id" | "created_at"> = {
   last_connected: null,
 };
 
+function statClass(value: number, cautionAt: number, criticalAt: number): string {
+  if (value >= criticalAt) return "stat-critical";
+  if (value >= cautionAt) return "stat-caution";
+  return "stat-nominal";
+}
+
 export default function ConnectionScreen({ onConnected }: Props) {
   const [profiles, setProfiles] = useState<ConnectionProfile[]>([]);
   const [form, setForm] = useState({ ...DEFAULT_PROFILE });
@@ -35,7 +42,7 @@ export default function ConnectionScreen({ onConnected }: Props) {
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load profiles on mount
+  // Load profiles on mount, auto-probe last profile
   useEffect(() => {
     (async () => {
       try {
@@ -53,6 +60,19 @@ export default function ConnectionScreen({ onConnected }: Props) {
             key_path: last.key_path,
             last_connected: last.last_connected,
           });
+
+          // Auto-probe if we have enough info
+          if (last.host && last.username && last.key_path) {
+            setProbing(true);
+            try {
+              const result = await probeHost(last.host, last.port, last.username, last.key_path);
+              setStatus(result);
+            } catch {
+              // Silently fail — user can manually probe
+            } finally {
+              setProbing(false);
+            }
+          }
         }
       } catch {
         // Fresh install, no profiles yet
@@ -84,7 +104,6 @@ export default function ConnectionScreen({ onConnected }: Props) {
     setConnecting(true);
     setError(null);
     try {
-      // Create or update profile
       const profileId =
         selectedId || crypto.randomUUID();
       const now = new Date().toISOString();
@@ -118,19 +137,14 @@ export default function ConnectionScreen({ onConnected }: Props) {
 
   return (
     <div className="connection-screen">
-      <div className="connection-content">
+      <div className={`connection-content${connecting ? " boot-active" : ""}`}>
         {/* Logo */}
-        <div className="logo-section">
-          <pre className="logo-ascii">{`╔═══════════════════════════╗
-║       K U R O L I N K     ║
-╚═══════════════════════════╝`}</pre>
-          <span className="version-label">v0.1.0</span>
-        </div>
+        <KuroLinkLogo />
 
         {/* Profile selector */}
         {profiles.length > 0 && (
           <div className="profile-selector">
-            <label className="field-label">PROFILE</label>
+            <label>PROFILE</label>
             <select
               value={selectedId || ""}
               onChange={(e) => {
@@ -163,7 +177,8 @@ export default function ConnectionScreen({ onConnected }: Props) {
         )}
 
         {/* Connection form */}
-        <div className="cyber-panel form-panel">
+        <div className="hud-frame form-panel">
+          <span className="hud-frame-label">CONNECTION PARAMETERS</span>
           <div className="form-row">
             <label className="field-label">NAME</label>
             <input
@@ -213,18 +228,19 @@ export default function ConnectionScreen({ onConnected }: Props) {
         </div>
 
         {/* Status panel */}
-        <div className="cyber-panel status-panel">
+        <div className={`hud-frame status-panel${probing ? " status-panel-probing" : ""}`}>
+          <span className="hud-frame-label">SYSTEM READOUT</span>
           <div className="status-row">
             <span className="field-label">STATUS</span>
             <span className="status-value">
               {probing ? (
-                <><span className="dot dot-cyan pulse" /> Probing...</>
+                <><span className="indicator-dot indicator-cyan indicator-pulse" /> Probing...</>
               ) : status?.reachable ? (
-                <><span className="dot dot-green pulse" /> Reachable</>
+                <><span className="indicator-dot indicator-green indicator-pulse" /> Reachable</>
               ) : status && !status.reachable ? (
-                <><span className="dot dot-pink" /> Unreachable</>
+                <><span className="indicator-dot indicator-red" /> Unreachable</>
               ) : (
-                <><span className="dot dot-dim" /> Unknown</>
+                <><span className="indicator-dot indicator-dim" /> Unknown</>
               )}
             </span>
           </div>
@@ -232,7 +248,9 @@ export default function ConnectionScreen({ onConnected }: Props) {
             <>
               <div className="status-row">
                 <span className="field-label">LATENCY</span>
-                <span className="status-value">{status.latency_ms}ms</span>
+                <span className={`status-value ${statClass(status.latency_ms ?? 0, 50, 150)}`}>
+                  {status.latency_ms ?? "—"}ms
+                </span>
               </div>
               {status.uptime && (
                 <div className="status-row">
@@ -241,25 +259,53 @@ export default function ConnectionScreen({ onConnected }: Props) {
                 </div>
               )}
               {status.cpu_temp != null && (
-                <div className="status-row">
-                  <span className="field-label">CPU TEMP</span>
-                  <span className="status-value">{status.cpu_temp.toFixed(1)}°C</span>
+                <div className="stat-row-bar">
+                  <div className="stat-row-header">
+                    <span className="field-label">CPU</span>
+                    <span className={`status-value ${statClass(status.cpu_temp, 60, 75)}`}>
+                      {status.cpu_temp.toFixed(1)}°C
+                    </span>
+                  </div>
+                  <div className="stat-bar">
+                    <div
+                      className={`stat-bar-fill ${statClass(status.cpu_temp, 60, 75)}`}
+                      style={{ width: `${Math.min(status.cpu_temp, 100)}%` }}
+                    />
+                  </div>
                 </div>
               )}
               {status.memory_used != null && (
-                <div className="status-row">
-                  <span className="field-label">MEMORY</span>
-                  <span className="status-value">
-                    {status.memory_used.toFixed(0)}% of {status.memory_total}
-                  </span>
+                <div className="stat-row-bar">
+                  <div className="stat-row-header">
+                    <span className="field-label">MEM</span>
+                    <span className={`status-value ${statClass(status.memory_used, 70, 85)}`}>
+                      {status.memory_used.toFixed(0)}%
+                      <span className="text-secondary">of {status.memory_total}</span>
+                    </span>
+                  </div>
+                  <div className="stat-bar">
+                    <div
+                      className={`stat-bar-fill ${statClass(status.memory_used, 70, 85)}`}
+                      style={{ width: `${Math.min(status.memory_used, 100)}%` }}
+                    />
+                  </div>
                 </div>
               )}
               {status.disk_used != null && (
-                <div className="status-row">
-                  <span className="field-label">DISK</span>
-                  <span className="status-value">
-                    {status.disk_used.toFixed(0)}% of {status.disk_total}
-                  </span>
+                <div className="stat-row-bar">
+                  <div className="stat-row-header">
+                    <span className="field-label">DISK</span>
+                    <span className={`status-value ${statClass(status.disk_used, 80, 90)}`}>
+                      {status.disk_used.toFixed(0)}%
+                      <span className="text-secondary">of {status.disk_total}</span>
+                    </span>
+                  </div>
+                  <div className="stat-bar">
+                    <div
+                      className={`stat-bar-fill ${statClass(status.disk_used, 80, 90)}`}
+                      style={{ width: `${Math.min(status.disk_used, 100)}%` }}
+                    />
+                  </div>
                 </div>
               )}
             </>
@@ -268,21 +314,21 @@ export default function ConnectionScreen({ onConnected }: Props) {
 
         {/* Probe button */}
         <button
-          className="btn btn-secondary"
+          className={`btn btn-secondary${probing ? " btn-loading" : ""}`}
           onClick={handleProbe}
           disabled={!formValid || probing}
         >
-          {probing ? "▸ PROBING..." : "▸ PROBE HOST"}
+          {probing ? "PROBING..." : "PROBE HOST"}
         </button>
 
         {/* Connect buttons */}
         <div className="connect-buttons">
           <button
-            className="btn btn-primary"
+            className={`btn btn-primary${connecting ? " btn-loading" : ""}`}
             onClick={handleConnect}
             disabled={!formValid || connecting}
           >
-            {connecting ? "▸ CONNECTING..." : "▸ CONNECT · CLI"}
+            {connecting ? "CONNECTING..." : "CONNECT · CLI"}
           </button>
           <button className="btn btn-disabled" disabled title="Coming in Phase 2">
             CONNECT · DE

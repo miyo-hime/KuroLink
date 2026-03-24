@@ -1,13 +1,36 @@
+/* ============================================
+   StatusBar — Telemetry Readout
+   ============================================ */
+
 .status-bar {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0;
   padding: 0 0.75rem;
-  height: 26px;
+  height: 30px;
   background: var(--bg-secondary);
-  border-top: 1px solid var(--border-glow);
+  border-top: 1px solid var(--border-subtle);
   flex-shrink: 0;
   overflow: hidden;
+  position: relative;
+}
+
+/* Gradient glow top border */
+.status-bar::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--border-glow) 20%,
+    var(--accent-primary) 50%,
+    var(--border-glow) 80%,
+    transparent
+  );
 }
 
 .stat-item {
@@ -16,13 +39,33 @@
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.03em;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0 0.5rem;
 }
 
-.stat-item:not(:last-child)::after {
-  content: "│";
-  margin-left: 0.25rem;
-  opacity: 0.3;
+.stat-item:not(:last-child) {
+  border-right: 1px solid rgba(0, 212, 255, 0.08);
 }
+
+.stat-label {
+  color: var(--text-label);
+  font-weight: 600;
+  margin-right: 0.2rem;
+}
+
+.stat-value-nominal { color: var(--accent-success); }
+.stat-value-caution { color: var(--accent-warning); }
+.stat-value-critical { color: var(--accent-secondary); }
+
+.stat-unit {
+  color: var(--text-dim);
+  opacity: 0.6;
+}
+
+.stat-net-up { color: var(--accent-primary); }
+.stat-net-down { color: var(--accent-tertiary); }
 
 .stat-dim {
   opacity: 0.5;

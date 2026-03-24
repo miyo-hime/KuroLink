@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import type { ConnectionProfile } from "./lib/types";
 import ConnectionScreen from "./components/ConnectionScreen";
 import MainView from "./components/MainView";
@@ -10,6 +10,8 @@ function App() {
   const [view, setView] = useState<AppView>("connect");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [profile, setProfile] = useState<ConnectionProfile | null>(null);
+  const [glitching, setGlitching] = useState(false);
+  const glitchRef = useRef<HTMLDivElement>(null);
 
   const handleConnected = (
     sid: string,
@@ -21,11 +23,15 @@ function App() {
     setView("terminal");
   };
 
-  const handleDisconnected = () => {
-    setSessionId(null);
-    setProfile(null);
-    setView("connect");
-  };
+  const handleDisconnected = useCallback(() => {
+    setGlitching(true);
+    setTimeout(() => {
+      setGlitching(false);
+      setSessionId(null);
+      setProfile(null);
+      setView("connect");
+    }, 400);
+  }, []);
 
   return (
     <div className="app">
@@ -33,11 +39,13 @@ function App() {
         <ConnectionScreen onConnected={handleConnected} />
       )}
       {view === "terminal" && sessionId && profile && (
-        <MainView
-          sessionId={sessionId}
-          profile={profile}
-          onDisconnected={handleDisconnected}
-        />
+        <div ref={glitchRef} className={glitching ? "view-glitch-out" : ""} style={{ height: "100%", width: "100%" }}>
+          <MainView
+            sessionId={sessionId}
+            profile={profile}
+            onDisconnected={handleDisconnected}
+          />
+        </div>
       )}
     </div>
   );
