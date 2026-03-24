@@ -170,7 +170,7 @@ export default function ConnectionScreen({ onConnected }: Props) {
               type="text"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="my-server"
+              placeholder="homelab"
             />
           </div>
           <div className="form-row">
@@ -198,7 +198,7 @@ export default function ConnectionScreen({ onConnected }: Props) {
               type="text"
               value={form.username}
               onChange={(e) => setForm({ ...form, username: e.target.value })}
-              placeholder="miyo"
+              placeholder="user"
             />
           </div>
           <div className="form-row">
