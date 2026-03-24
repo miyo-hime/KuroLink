@@ -356,3 +356,40 @@
   border-color: var(--border-active) !important;
   box-shadow: 0 0 12px rgba(0, 212, 255, 0.08);
 }
+
+/* ---- Passphrase prompt ---- */
+
+.passphrase-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border-color: var(--accent-primary);
+  animation: passphrase-glow 1.5s ease-in-out infinite alternate;
+}
+
+.passphrase-panel input {
+  text-align: center;
+  letter-spacing: 0.15em;
+}
+
+.passphrase-hint {
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  margin: 0;
+  text-align: center;
+}
+
+.passphrase-buttons {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.passphrase-buttons .btn {
+  flex: 1;
+}
+
+@keyframes passphrase-glow {
+  from { box-shadow: 0 0 8px rgba(0, 212, 255, 0.05); }
+  to   { box-shadow: 0 0 16px rgba(0, 212, 255, 0.12); }
+}

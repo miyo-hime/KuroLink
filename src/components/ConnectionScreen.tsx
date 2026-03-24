@@ -51,6 +51,8 @@ export default function ConnectionScreen({ onConnected }: Props) {
   const [probing, setProbing] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [passphrasePrompt, setPassphrasePrompt] = useState(false);
+  const [passphrase, setPassphrase] = useState("");
 
   // Load profiles on mount, auto-probe last profile
   useEffect(() => {
@@ -110,12 +112,11 @@ export default function ConnectionScreen({ onConnected }: Props) {
     }
   }, [form]);
 
-  const handleConnect = async () => {
+  const doConnect = async (pp: string | null) => {
     setConnecting(true);
     setError(null);
     try {
-      const profileId =
-        selectedId || crypto.randomUUID();
+      const profileId = selectedId || crypto.randomUUID();
       const now = new Date().toISOString();
       const profile: ConnectionProfile = {
         id: profileId,
@@ -135,12 +136,32 @@ export default function ConnectionScreen({ onConnected }: Props) {
         form.port,
         form.username,
         form.key_path,
+        pp,
       );
       onConnected(sessionId, profileId, profile);
     } catch (e) {
-      setError(String(e));
-      setConnecting(false);
+      const msg = String(e);
+      if (msg.includes("ENCRYPTED_KEY")) {
+        setConnecting(false);
+        setPassphrasePrompt(true);
+        setPassphrase("");
+      } else {
+        setError(msg);
+        setConnecting(false);
+      }
     }
+  };
+
+  const handleConnect = () => doConnect(null);
+
+  const handlePassphraseSubmit = () => {
+    setPassphrasePrompt(false);
+    doConnect(passphrase);
+  };
+
+  const handlePassphraseCancel = () => {
+    setPassphrasePrompt(false);
+    setPassphrase("");
   };
 
   const formValid = form.host && form.username && form.key_path;
@@ -361,6 +382,34 @@ export default function ConnectionScreen({ onConnected }: Props) {
             CONNECT · DE
           </button>
         </div>
+
+        {/* Passphrase prompt */}
+        {passphrasePrompt && (
+          <div className="hud-frame passphrase-panel">
+            <span className="hud-frame-label">KEY PASSPHRASE</span>
+            <p className="passphrase-hint">Your SSH key is encrypted. Enter the passphrase to unlock it.</p>
+            <input
+              type="password"
+              value={passphrase}
+              onChange={(e) => setPassphrase(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && passphrase && handlePassphraseSubmit()}
+              placeholder="Passphrase"
+              autoFocus
+            />
+            <div className="passphrase-buttons">
+              <button className="btn btn-secondary" onClick={handlePassphraseCancel}>
+                CANCEL
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handlePassphraseSubmit}
+                disabled={!passphrase}
+              >
+                UNLOCK
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Error display */}
         {error && <div className="error-msg">{error}</div>}

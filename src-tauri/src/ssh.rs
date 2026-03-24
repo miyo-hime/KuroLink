@@ -102,6 +102,7 @@ impl SshSession {
         port: u16,
         username: &str,
         key_path: &str,
+        passphrase: Option<&str>,
     ) -> Result<Self, String> {
         // Expand ~ to home dir
         let expanded_path = if key_path.starts_with("~/") {
@@ -113,8 +114,20 @@ impl SshSession {
             key_path.to_string()
         };
 
-        let key = load_secret_key(&expanded_path, None)
-            .map_err(|e| format!("Failed to load SSH key '{}': {e}", expanded_path))?;
+        let key = load_secret_key(&expanded_path, passphrase)
+            .map_err(|e| {
+                let msg = format!("{e}");
+                let lower = msg.to_lowercase();
+                if passphrase.is_none()
+                    && (lower.contains("encrypt")
+                        || lower.contains("passphrase")
+                        || lower.contains("decrypt"))
+                {
+                    "ENCRYPTED_KEY".to_string()
+                } else {
+                    format!("Failed to load SSH key '{}': {e}", expanded_path)
+                }
+            })?;
 
         let config = Arc::new(client::Config {
             inactivity_timeout: Some(std::time::Duration::from_secs(30)),

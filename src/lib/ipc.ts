@@ -30,6 +30,7 @@ export const connectSsh = (
   port: number,
   username: string,
   keyPath: string,
+  passphrase?: string | null,
 ) =>
   invoke<string>("connect_ssh", {
     profileId,
@@ -37,6 +38,7 @@ export const connectSsh = (
     port,
     username,
     keyPath,
+    passphrase: passphrase ?? null,
   });
 
 export const disconnectSsh = (sessionId: string) =>
