@@ -21,12 +21,12 @@ pub struct AppConfig {
     pub last_profile_id: Option<String>,
 }
 
-pub fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to get app data dir: {e}"))?;
-    Ok(dir.join("config.json"))
+pub fn config_path(_app: &AppHandle) -> Result<PathBuf, String> {
+    let exe = std::env::current_exe()
+        .map_err(|e| format!("Failed to get exe path: {e}"))?;
+    let dir = exe.parent()
+        .ok_or_else(|| "Failed to get exe directory".to_string())?;
+    Ok(dir.join("kurolink.json"))
 }
 
 pub fn load_config(app: &AppHandle) -> Result<AppConfig, String> {
