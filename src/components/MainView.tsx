@@ -1,11 +1,13 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import type { ConnectionProfile, TerminalTab, SystemStats } from "../lib/types";
+import type { ConnectionProfile, TerminalTab, SystemStats, ConnectionStatus, MainMode } from "../lib/types";
 import {
   openShell,
   closeShell,
   disconnectSsh,
   pingSession,
   fetchSystemStats,
+  connectSsh,
+  onSessionError,
 } from "../lib/ipc";
 import TopBar from "./TopBar";
 import TabBar from "./TabBar";
@@ -17,24 +19,37 @@ interface Props {
   sessionId: string;
   profile: ConnectionProfile;
   onDisconnected: () => void;
+  onSessionReconnected: (newSessionId: string) => void;
 }
 
 const STATS_POLL_MS = 10_000;
+const FAIL_THRESHOLD = 3;
 
-export default function MainView({ sessionId, profile, onDisconnected }: Props) {
+export default function MainView({ sessionId, profile, onDisconnected, onSessionReconnected }: Props) {
   const [tabs, setTabs] = useState<TerminalTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [latency, setLatency] = useState<number | null>(null);
   const [stats, setStats] = useState<SystemStats | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connected");
+  const [mode, setMode] = useState<MainMode>("cli");
+  const [reconnecting, setReconnecting] = useState(false);
   const prevStatsRef = useRef<SystemStats | null>(null);
   const tabCountRef = useRef(0);
   const mountedRef = useRef(false);
+  const failCountRef = useRef(0);
 
-  // Open first terminal on mount (guard against StrictMode double-fire)
+  // Guard against React StrictMode double-mount in dev.
+  // Prevents duplicate shell opens. Harmless in prod where StrictMode
+  // doesn't double-fire. Revisit if we need legitimate remounts.
   useEffect(() => {
     if (mountedRef.current) return;
     mountedRef.current = true;
     createNewTab();
+
+    // Listen for session errors from backend
+    const unlistenPromise = onSessionError(sessionId, (_msg) => {
+      setConnectionStatus("lost");
+    });
 
     // Fetch stats immediately, then poll
     const pollStats = async () => {
@@ -43,7 +58,16 @@ export default function MainView({ sessionId, profile, onDisconnected }: Props) 
           pingSession(sessionId).catch(() => null),
           fetchSystemStats(sessionId).catch(() => null),
         ]);
-        if (ping != null) setLatency(ping);
+        if (ping != null) {
+          setLatency(ping);
+          failCountRef.current = 0;
+          setConnectionStatus((prev) => prev === "degraded" ? "connected" : prev);
+        } else {
+          failCountRef.current++;
+          if (failCountRef.current >= FAIL_THRESHOLD) {
+            setConnectionStatus((prev) => prev === "connected" ? "degraded" : prev);
+          }
+        }
         if (sysStats) {
           setStats((prev) => {
             prevStatsRef.current = prev;
@@ -58,7 +82,10 @@ export default function MainView({ sessionId, profile, onDisconnected }: Props) 
     pollStats();
     const interval = setInterval(pollStats, STATS_POLL_MS);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      unlistenPromise.then((unlisten) => unlisten());
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const createNewTab = useCallback(async () => {
@@ -96,6 +123,26 @@ export default function MainView({ sessionId, profile, onDisconnected }: Props) 
     onDisconnected();
   }, [sessionId, onDisconnected]);
 
+  const handleReconnect = useCallback(async () => {
+    setReconnecting(true);
+    try {
+      const newSessionId = await connectSsh(
+        profile.id,
+        profile.host,
+        profile.port,
+        profile.username,
+        profile.key_path,
+      );
+      setConnectionStatus("connected");
+      failCountRef.current = 0;
+      onSessionReconnected(newSessionId);
+    } catch (e) {
+      console.error("Reconnect failed:", e);
+    } finally {
+      setReconnecting(false);
+    }
+  }, [profile, onSessionReconnected]);
+
   const handleTerminalClosed = useCallback(
     (channelId: string) => {
       handleCloseTab(channelId);
@@ -103,31 +150,75 @@ export default function MainView({ sessionId, profile, onDisconnected }: Props) 
     [handleCloseTab],
   );
 
+  const handleTabTitleChange = useCallback(
+    (channelId: string, title: string) => {
+      setTabs((prev) =>
+        prev.map((t) => (t.channelId === channelId ? { ...t, title } : t)),
+      );
+    },
+    [],
+  );
+
   return (
     <div className="main-view">
       <TopBar
         hostname={profile.name || profile.host}
-        connected={true}
+        connectionStatus={connectionStatus}
         latency={latency}
+        mode={mode}
+        onModeChange={setMode}
         onDisconnect={handleDisconnect}
       />
-      <TabBar
-        tabs={tabs}
-        activeTabId={activeTabId}
-        onSelectTab={setActiveTabId}
-        onCloseTab={handleCloseTab}
-        onNewTab={createNewTab}
-      />
+      <div style={{ display: mode === "cli" ? "contents" : "none" }}>
+        <TabBar
+          tabs={tabs}
+          activeTabId={activeTabId}
+          onSelectTab={setActiveTabId}
+          onCloseTab={handleCloseTab}
+          onNewTab={createNewTab}
+        />
+      </div>
       <div className="terminal-area">
-        {tabs.map((tab) => (
-          <TerminalPanel
-            key={tab.channelId}
-            sessionId={sessionId}
-            channelId={tab.channelId}
-            active={tab.channelId === activeTabId}
-            onClosed={() => handleTerminalClosed(tab.channelId)}
-          />
-        ))}
+        <div style={{ display: mode === "cli" ? "contents" : "none" }}>
+          {tabs.map((tab) => (
+            <TerminalPanel
+              key={tab.channelId}
+              sessionId={sessionId}
+              channelId={tab.channelId}
+              active={tab.channelId === activeTabId && mode === "cli"}
+              onClosed={() => handleTerminalClosed(tab.channelId)}
+              onTitleChange={(title) => handleTabTitleChange(tab.channelId, title)}
+            />
+          ))}
+        </div>
+        {mode === "de" && (
+          <div className="de-placeholder">
+            <div className="de-placeholder-icon">&#9634;</div>
+            <div className="de-placeholder-title">DESKTOP ENVIRONMENT</div>
+            <div className="de-placeholder-sub">VNC integration — coming in Phase 2</div>
+          </div>
+        )}
+        {connectionStatus === "lost" && (
+          <div className="link-lost-overlay">
+            <div className="link-lost-panel">
+              <div className="link-lost-icon">⚠</div>
+              <div className="link-lost-title">LINK LOST</div>
+              <div className="link-lost-sub">Connection to target terminated unexpectedly</div>
+              <div className="link-lost-actions">
+                <button
+                  className="btn btn-primary"
+                  onClick={handleReconnect}
+                  disabled={reconnecting}
+                >
+                  {reconnecting ? "RECONNECTING..." : "RECONNECT"}
+                </button>
+                <button className="btn btn-danger" onClick={handleDisconnect}>
+                  DISCONNECT
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       <StatusBar
         stats={stats}

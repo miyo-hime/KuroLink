@@ -82,3 +82,9 @@ export const onTerminalClosed = (
   cb: () => void,
 ): Promise<UnlistenFn> =>
   listen<void>(`terminal-closed-${channelId}`, () => cb());
+
+export const onSessionError = (
+  sessionId: string,
+  cb: (msg: string) => void,
+): Promise<UnlistenFn> =>
+  listen<string>(`session-error-${sessionId}`, (e) => cb(e.payload));

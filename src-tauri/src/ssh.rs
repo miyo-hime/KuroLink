@@ -2,6 +2,7 @@ use russh::client;
 use russh::keys::{load_secret_key, PrivateKeyWithHashAlg};
 use russh::{Channel, ChannelMsg, Disconnect};
 use russh::keys::ssh_key::PublicKey;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 use tauri::{AppHandle, Emitter};
@@ -9,18 +10,83 @@ use tokio::sync::mpsc;
 
 // -- Handler --
 
-pub struct SshHandler;
+pub struct SshHandler {
+    known_hosts_path: PathBuf,
+    host: String,
+}
+
+impl SshHandler {
+    /// Verify a server key against known_hosts (TOFU model).
+    /// - Unknown host: trust and append to known_hosts, return Ok(true)
+    /// - Known host, matching key: return Ok(true)
+    /// - Known host, different key: return Ok(false) (potential MITM)
+    fn verify_known_host(&self, server_key: &PublicKey) -> Result<bool, String> {
+        let key_str = server_key.to_string();
+        let host = &self.host;
+
+        let contents = match std::fs::read_to_string(&self.known_hosts_path) {
+            Ok(c) => c,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(e) => return Err(format!("Failed to read known_hosts: {e}")),
+        };
+
+        for line in contents.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            // Format: hostname algorithm base64key [comment]
+            let Some((entry_host, remaining)) = line.split_once(' ') else { continue };
+
+            if entry_host == host {
+                // Host found—compare the key portion
+                if remaining.trim() == key_str.trim() {
+                    return Ok(true);
+                } else {
+                    log::warn!(
+                        "HOST KEY MISMATCH for {host}! Stored key differs from server key. \
+                         Possible MITM attack."
+                    );
+                    return Ok(false);
+                }
+            }
+        }
+
+        // Host not in known_hosts—TOFU: trust and save
+        log::info!("New host {host}, adding to known_hosts (TOFU)");
+        if let Some(parent) = self.known_hosts_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let entry = format!("{host} {key_str}\n");
+        if let Err(e) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.known_hosts_path)
+            .and_then(|mut f| std::io::Write::write_all(&mut f, entry.as_bytes()))
+        {
+            log::error!("Failed to write known_hosts: {e}");
+            // Don't fail the connection—just warn
+        }
+
+        Ok(true)
+    }
+}
 
 impl client::Handler for SshHandler {
     type Error = russh::Error;
 
     async fn check_server_key(
         &mut self,
-        _server_public_key: &PublicKey,
+        server_public_key: &PublicKey,
     ) -> Result<bool, Self::Error> {
-        // MVP: accept all server keys
-        // TODO Phase 2: known_hosts verification
-        Ok(true)
+        match self.verify_known_host(server_public_key) {
+            Ok(trusted) => Ok(trusted),
+            Err(e) => {
+                log::error!("known_hosts verification error: {e}");
+                // Fail open on read errors so we don't lock users out
+                Ok(true)
+            }
+        }
     }
 }
 
@@ -57,7 +123,12 @@ impl SshSession {
             ..Default::default()
         });
 
-        let handler = SshHandler;
+        let known_hosts = crate::config::known_hosts_path()
+            .unwrap_or_else(|_| PathBuf::from(".ssh/known_hosts"));
+        let handler = SshHandler {
+            known_hosts_path: known_hosts,
+            host: host.to_string(),
+        };
         let mut handle = client::connect(config, (host, port), handler)
             .await
             .map_err(|e| format!("SSH connection failed: {e}"))?;
@@ -170,12 +241,14 @@ pub enum ChannelInput {
 /// Returns an mpsc::Sender for sending input/resize/close to the channel.
 pub fn spawn_channel_io(
     app: AppHandle,
+    session_id: String,
     channel_id: String,
     mut channel: Channel<client::Msg>,
 ) -> mpsc::Sender<ChannelInput> {
     let (tx, mut rx) = mpsc::channel::<ChannelInput>(256);
 
     tokio::spawn(async move {
+        let mut user_closed = false;
         loop {
             tokio::select! {
                 // Data from the remote (SSH -> frontend)
@@ -197,6 +270,11 @@ pub fn spawn_channel_io(
                         Some(ChannelMsg::Close) | None => {
                             let event = format!("terminal-closed-{channel_id}");
                             let _ = app.emit(&event, ());
+                            if !user_closed {
+                                // Unexpected close—signal session error
+                                let err_event = format!("session-error-{session_id}");
+                                let _ = app.emit(&err_event, "Connection lost");
+                            }
                             break;
                         }
                         _ => {}
@@ -208,6 +286,8 @@ pub fn spawn_channel_io(
                         Some(ChannelInput::Data(bytes)) => {
                             if let Err(e) = channel.data(&bytes[..]).await {
                                 log::error!("Failed to write to channel: {e}");
+                                let err_event = format!("session-error-{session_id}");
+                                let _ = app.emit(&err_event, format!("Write failed: {e}"));
                                 break;
                             }
                         }
@@ -215,6 +295,7 @@ pub fn spawn_channel_io(
                             let _ = channel.window_change(cols, rows, 0, 0).await;
                         }
                         Some(ChannelInput::Close) | None => {
+                            user_closed = true;
                             let _ = channel.close().await;
                             break;
                         }

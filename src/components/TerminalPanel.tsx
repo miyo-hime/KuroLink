@@ -11,6 +11,7 @@ interface Props {
   channelId: string;
   active: boolean;
   onClosed?: () => void;
+  onTitleChange?: (title: string) => void;
 }
 
 const TERMINAL_THEME = {
@@ -37,7 +38,7 @@ const TERMINAL_THEME = {
   brightWhite: "#ffffff",
 };
 
-export default function TerminalPanel({ sessionId, channelId, active, onClosed }: Props) {
+export default function TerminalPanel({ sessionId, channelId, active, onClosed, onTitleChange }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -82,6 +83,11 @@ export default function TerminalPanel({ sessionId, channelId, active, onClosed }
       resizeShell(sessionId, channelId, cols, rows).catch(() => {});
     });
 
+    // Shell title updates (OSC escape sequences) → tab title
+    const onTitleDisposable = term.onTitleChange((title) => {
+      onTitleChange?.(title);
+    });
+
     // SSH output → terminal
     let unlistenOutput: (() => void) | null = null;
     let unlistenClosed: (() => void) | null = null;
@@ -104,6 +110,7 @@ export default function TerminalPanel({ sessionId, channelId, active, onClosed }
       resizeObserver.disconnect();
       onDataDisposable.dispose();
       onResizeDisposable.dispose();
+      onTitleDisposable.dispose();
       unlistenOutput?.();
       unlistenClosed?.();
       term.dispose();

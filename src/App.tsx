@@ -33,6 +33,10 @@ function App() {
     }, 400);
   }, []);
 
+  const handleSessionReconnected = useCallback((newSessionId: string) => {
+    setSessionId(newSessionId);
+  }, []);
+
   return (
     <div className="app">
       {view === "connect" && (
@@ -44,6 +48,7 @@ function App() {
             sessionId={sessionId}
             profile={profile}
             onDisconnected={handleDisconnected}
+            onSessionReconnected={handleSessionReconnected}
           />
         </div>
       )}
