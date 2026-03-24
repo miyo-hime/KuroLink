@@ -1,0 +1,29 @@
+[package]
+name = "kurolink"
+version = "0.1.0"
+description = "Remote access client for kurobox"
+authors = ["Miyo Kanemitsu"]
+license = "Apache-2.0"
+repository = "https://github.com/miyo-hime/KuroLink"
+default-run = "kurolink"
+edition = "2021"
+
+[lib]
+name = "kurolink_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
