@@ -1,4 +1,15 @@
 .app {
   height: 100%;
   width: 100%;
+  position: relative;
+}
+
+/* View enter animation */
+.app > * {
+  animation: view-enter 0.35s ease-out both;
+}
+
+/* Glitch-out transition class — applied briefly on disconnect */
+.view-glitch-out {
+  animation: glitch-out 0.4s ease-out forwards !important;
 }

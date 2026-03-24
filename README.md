@@ -51,6 +51,16 @@ First build takes a while. Rust is compiling ~400 crates. Go make coffee.
 
 Profiles auto-save. The app remembers your last connection. `~/.ssh/id_ed25519` is the default key path.
 
+## host requirements
+
+The live stats (CPU temp, memory, disk, network) are pulled by running standard Linux commands over SSH. Your target machine needs:
+
+- `free`, `df`, `awk`, `uptime` - if you're running any normal Linux distro these are already there. if they're not, something has gone wrong and you have bigger problems than KuroLink
+- `/sys/class/thermal/thermal_zone0/temp` - CPU temperature. works on Raspberry Pi OS out of the box. if your device doesn't have a thermal zone, CPU temp just won't show up. it's fine
+- `/sys/class/net/eth0/statistics/` - network throughput. currently hardcoded to `eth0` because it was 4am when I wrote this. if you're on WiFi (`wlan0`), network stats will read zero. sorry
+
+tl;dr if it's a Raspberry Pi running Raspberry Pi OS, everything just works. if it's something else, most things will work and the rest will not show up.
+
 ## roadmap
 
 - [x] SSH terminal with multi-tab

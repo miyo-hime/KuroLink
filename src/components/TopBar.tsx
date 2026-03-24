@@ -7,18 +7,24 @@ interface Props {
   onDisconnect: () => void;
 }
 
+function latencyClass(ms: number): string {
+  if (ms < 50) return "latency-good";
+  if (ms < 150) return "latency-warn";
+  return "latency-bad";
+}
+
 export default function TopBar({ hostname, connected, latency, onDisconnect }: Props) {
   return (
     <div className="top-bar">
       <div className="top-bar-left">
-        <span className="top-bar-icon">▸</span>
+        <span className="top-bar-label">TARGET</span>
         <span className="top-bar-host">{hostname}</span>
-        <span className={`dot ${connected ? "dot-green pulse" : "dot-pink"}`} />
+        <span className={`indicator-diamond ${connected ? "indicator-green indicator-pulse" : "indicator-red"}`} />
         <span className="top-bar-status">
           {connected ? "connected" : "disconnected"}
         </span>
         {latency != null && (
-          <span className="top-bar-latency">{latency}ms</span>
+          <span className={`top-bar-latency ${latencyClass(latency)}`}>{latency}ms</span>
         )}
       </div>
       <div className="top-bar-right">

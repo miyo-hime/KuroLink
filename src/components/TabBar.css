@@ -1,8 +1,12 @@
+/* ============================================
+   TabBar — Subsystem Selector
+   ============================================ */
+
 .tab-bar {
   display: flex;
   align-items: stretch;
   background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-glow);
+  border-bottom: 1px solid var(--border-subtle);
   height: 32px;
   flex-shrink: 0;
   overflow-x: auto;
@@ -17,20 +21,66 @@
   letter-spacing: 0.05em;
   color: var(--text-dim);
   cursor: pointer;
-  border-right: 1px solid rgba(90, 90, 114, 0.2);
-  transition: all 0.15s;
+  border-right: 1px solid rgba(74, 74, 100, 0.15);
+  transition: all var(--transition-fast);
   white-space: nowrap;
+  position: relative;
 }
 
 .tab:hover {
   color: var(--text-primary);
-  background: rgba(0, 240, 255, 0.03);
+  background: rgba(0, 212, 255, 0.03);
+}
+
+/* Hover sweep effect */
+.tab::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  height: 1px;
+  background: var(--accent-primary);
+  transition: width 0.25s ease;
+}
+
+.tab:hover::after {
+  width: 100%;
 }
 
 .tab-active {
   color: var(--accent-primary);
   background: var(--bg-terminal);
-  border-bottom: 2px solid var(--accent-primary);
+}
+
+/* Active tab left accent pip */
+.tab-active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 25%;
+  height: 50%;
+  width: 2px;
+  background: var(--accent-primary);
+  box-shadow: var(--glow-sm) var(--accent-primary);
+}
+
+/* Active tab bottom glow replaces sweep */
+.tab-active::after {
+  width: 100%;
+  background: var(--accent-primary);
+  opacity: 0.6;
+}
+
+.tab-index {
+  color: var(--text-dim);
+  font-size: 0.6rem;
+  opacity: 0.6;
+}
+
+.tab-active .tab-index {
+  color: var(--accent-primary);
+  opacity: 0.8;
 }
 
 .tab-title {
@@ -44,8 +94,9 @@
   font-size: 0.85rem;
   cursor: pointer;
   padding: 0 2px;
-  opacity: 0.5;
+  opacity: 0.4;
   line-height: 1;
+  transition: all var(--transition-fast);
 }
 
 .tab-close:hover {
@@ -57,12 +108,16 @@
   background: none;
   border: none;
   color: var(--text-dim);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   padding: 0 0.75rem;
   cursor: pointer;
-  transition: color 0.15s;
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .tab-new:hover {
   color: var(--accent-primary);
+  text-shadow: var(--glow-sm) var(--accent-primary);
 }

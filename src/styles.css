@@ -1,14 +1,50 @@
+/* ============================================
+   KUROLINK — Global Design Tokens & Foundation
+   NERV/Gundam Command Console Aesthetic
+   ============================================ */
+
 :root {
-  --bg-primary: #0a0a0f;
-  --bg-secondary: #12121a;
-  --bg-terminal: #080810;
-  --accent-primary: #00f0ff;
-  --accent-secondary: #ff2d6b;
-  --accent-tertiary: #b4ff39;
-  --text-primary: #e0e0e8;
-  --text-dim: #5a5a72;
-  --border-glow: rgba(0, 240, 255, 0.15);
+  /* Backgrounds — cool blue-shifted for military console */
+  --bg-primary: #08080e;
+  --bg-secondary: #0e0e18;
+  --bg-tertiary: #141420;
+  --bg-terminal: #06060c;
+
+  /* Accents — instrument panel, not nightclub */
+  --accent-primary: #00d4ff;
+  --accent-secondary: #e8254e;
+  --accent-tertiary: #8ccc26;
+  --accent-warning: #e8a800;
+  --accent-success: #22c55e;
+
+  /* Text hierarchy */
+  --text-primary: #d8d8e4;
+  --text-secondary: #9898b0;
+  --text-dim: #4a4a64;
+  --text-label: #606080;
+
+  /* Borders & glows */
+  --border-subtle: rgba(0, 212, 255, 0.08);
+  --border-glow: rgba(0, 212, 255, 0.18);
+  --border-active: rgba(0, 212, 255, 0.35);
+
+  /* HUD decorative */
+  --hud-grid: rgba(0, 212, 255, 0.04);
+  --hud-line: rgba(0, 212, 255, 0.12);
+  --panel-shadow: rgba(0, 0, 0, 0.6);
+
+  /* Animation timing */
+  --transition-fast: 0.12s ease;
+  --transition-normal: 0.2s ease;
+  --transition-smooth: 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Glow presets */
+  --glow-sm: 0 0 6px;
+  --glow-md: 0 0 12px;
+  --glow-lg: 0 0 24px;
 }
+
+/* ---- Reset ---- */
 
 * {
   margin: 0;
@@ -28,7 +64,289 @@ body {
   font-family:
     "JetBrains Mono", "IBM Plex Mono", "Fira Code", "Cascadia Code", monospace;
   background-color: var(--bg-primary);
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      var(--hud-grid) 0px,
+      var(--hud-grid) 1px,
+      transparent 1px,
+      transparent 40px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      var(--hud-grid) 0px,
+      var(--hud-grid) 1px,
+      transparent 1px,
+      transparent 40px
+    );
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* ---- Focus styling ---- */
+
+*:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--accent-primary), var(--glow-sm) rgba(0, 212, 255, 0.25);
+}
+
+/* ---- Scrollbar ---- */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-glow);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-primary);
+}
+
+/* ============================================
+   HUD Frame System
+   Angular panels with corner accents & glow
+   ============================================ */
+
+.hud-frame {
+  position: relative;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  padding: 0.75rem 1rem;
+  margin-top: 10px;
+  overflow: visible;
+  transition: border-color var(--transition-normal);
+}
+
+/* Top-right corner accent */
+.hud-frame::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 14px;
+  height: 14px;
+  border-right: 2px solid var(--accent-primary);
+  border-top: 2px solid var(--accent-primary);
+  opacity: 0.4;
+  pointer-events: none;
+  animation: border-breathe 4s ease-in-out infinite;
+}
+
+/* Bottom-left corner accent */
+.hud-frame::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: -1px;
+  width: 14px;
+  height: 14px;
+  border-left: 2px solid var(--accent-primary);
+  border-bottom: 2px solid var(--accent-primary);
+  opacity: 0.4;
+  pointer-events: none;
+  animation: border-breathe 4s ease-in-out infinite 2s;
+}
+
+.hud-frame-label {
+  position: absolute;
+  top: -8px;
+  left: 12px;
+  background: var(--bg-secondary);
+  padding: 0 6px;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-label);
+  z-index: 1;
+  line-height: 1;
+}
+
+/* ---- Status indicators ---- */
+
+.indicator-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.indicator-diamond {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  transform: rotate(45deg);
+  flex-shrink: 0;
+}
+
+.indicator-green {
+  background: var(--accent-success);
+  box-shadow: var(--glow-sm) var(--accent-success);
+}
+
+.indicator-cyan {
+  background: var(--accent-primary);
+  box-shadow: var(--glow-sm) var(--accent-primary);
+}
+
+.indicator-red {
+  background: var(--accent-secondary);
+  box-shadow: var(--glow-sm) var(--accent-secondary);
+}
+
+.indicator-warning {
+  background: var(--accent-warning);
+  box-shadow: var(--glow-sm) var(--accent-warning);
+}
+
+.indicator-dim {
+  background: var(--text-dim);
+}
+
+.indicator-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+/* ---- Status color classes ---- */
+
+.stat-nominal {
+  color: var(--accent-success);
+}
+
+.stat-caution {
+  color: var(--accent-warning);
+}
+
+.stat-critical {
+  color: var(--accent-secondary);
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+/* ---- Utility ---- */
+
+.glow-text {
+  text-shadow: var(--glow-sm) currentColor;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- HUD divider ---- */
+
+.hud-divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--border-glow) 30%,
+    var(--accent-primary) 50%,
+    var(--border-glow) 70%,
+    transparent
+  );
+  border: none;
+}
+
+/* ============================================
+   Global Keyframes
+   ============================================ */
+
+@keyframes border-breathe {
+  0%, 100% { opacity: 0.15; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes data-flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
+
+@keyframes scan-line {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(calc(100vh)); }
+}
+
+@keyframes boot-sequence {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes glitch-out {
+  0% {
+    transform: translateX(0);
+    opacity: 1;
+    filter: none;
+  }
+  20% {
+    transform: translateX(-4px);
+    opacity: 0.8;
+    filter: hue-rotate(30deg);
+  }
+  40% {
+    transform: translateX(6px);
+    opacity: 0.6;
+    filter: hue-rotate(-20deg) saturate(2);
+  }
+  60% {
+    transform: translateX(-2px);
+    opacity: 0.4;
+    clip-path: inset(20% 0 40% 0);
+  }
+  80% {
+    transform: translateX(3px);
+    opacity: 0.2;
+    clip-path: inset(60% 0 10% 0);
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 0;
+    filter: none;
+  }
+}
+
+@keyframes loading-stripes {
+  0% { background-position: 0 0; }
+  100% { background-position: 40px 0; }
+}
+
+@keyframes logo-glow {
+  0%, 100% {
+    filter: drop-shadow(0 0 6px rgba(0, 212, 255, 0.3));
+  }
+  50% {
+    filter: drop-shadow(0 0 14px rgba(0, 212, 255, 0.5))
+           drop-shadow(0 0 28px rgba(0, 212, 255, 0.15));
+  }
+}
+
+@keyframes view-enter {
+  0% {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
