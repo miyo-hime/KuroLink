@@ -1,6 +1,6 @@
 [package]
 name = "kurolink"
-version = "0.1.0"
+version = "0.2.0"
 description = "Remote access client for kurobox"
 authors = ["Miyo Kanemitsu"]
 license = "Apache-2.0"
