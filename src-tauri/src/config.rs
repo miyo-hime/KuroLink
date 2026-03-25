@@ -16,8 +16,8 @@ pub fn known_hosts_path() -> Result<PathBuf, String> {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum AuthMode {
-    #[default]
     KeyFile,
+    #[default]
     Agent,
 }
 

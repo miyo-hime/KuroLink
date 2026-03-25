@@ -94,21 +94,55 @@ impl client::Handler for SshHandler {
 
 type DynAgent = AgentClient<Box<dyn AgentStream + Send + Unpin + 'static>>;
 
-/// connect to whatever SSH agent is available on this platform.
-/// windows: openssh named pipe first, then pageant.
-/// linux/mac: SSH_AUTH_SOCK.
+/// try all available agent sources on this platform and return the first
+/// one that actually has keys loaded. falls back to any connectable agent
+/// if none have keys (so the caller gets "no keys" instead of "no agent").
 pub async fn connect_agent() -> Result<DynAgent, String> {
     #[cfg(windows)]
     {
-        // try openssh agent first (modern windows default)
-        if let Ok(agent) = AgentClient::connect_named_pipe(r"\\.\pipe\openssh-ssh-agent").await {
-            return Ok(agent.dynamic());
+        // gather every agent we can talk to
+        let mut agents: Vec<DynAgent> = Vec::new();
+
+        if let Ok(a) = AgentClient::connect_named_pipe(r"\\.\pipe\openssh-ssh-agent").await {
+            agents.push(a.dynamic());
         }
-        // fall back to pageant
-        if let Ok(agent) = AgentClient::connect_pageant().await {
-            return Ok(agent.dynamic());
+        // 1password, gpg4win, etc. sometimes expose a custom named pipe
+        // via SSH_AUTH_SOCK (it's a windows pipe path, not a unix socket)
+        if let Ok(sock) = std::env::var("SSH_AUTH_SOCK") {
+            if sock.starts_with(r"\\") {
+                if let Ok(a) = AgentClient::connect_named_pipe(&sock).await {
+                    agents.push(a.dynamic());
+                }
+            }
         }
-        Err("no SSH agent found - start OpenSSH Authentication Agent service or Pageant".into())
+        if let Ok(a) = AgentClient::connect_pageant().await {
+            agents.push(a.dynamic());
+        }
+
+        if agents.is_empty() {
+            return Err(
+                "no SSH agent found - start OpenSSH Authentication Agent \
+                 service or Pageant"
+                    .into(),
+            );
+        }
+
+        // prefer the first agent that actually has keys loaded
+        let mut first = None;
+        for mut agent in agents {
+            match agent.request_identities().await {
+                Ok(keys) if !keys.is_empty() => return Ok(agent),
+                _ => {
+                    if first.is_none() {
+                        first = Some(agent);
+                    }
+                }
+            }
+        }
+
+        // no keys anywhere - return whatever connected so the caller
+        // gets "no keys" instead of "no agent"
+        Ok(first.unwrap())
     }
     #[cfg(not(windows))]
     {
@@ -239,7 +273,12 @@ impl SshSession {
                     .map_err(|e| format!("failed to list agent keys: {e}"))?;
 
                 if keys.is_empty() {
-                    return Err("no keys loaded in SSH agent".to_string());
+                    return Err(
+                        "SSH agent is running but has no keys loaded. \
+                         Try running 'ssh-add' to add your key, or check \
+                         that the correct agent is running"
+                            .to_string(),
+                    );
                 }
 
                 let config = Arc::new(client::Config {
