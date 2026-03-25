@@ -12,6 +12,8 @@ A desktop SSH client that looks like a mecha command console. Connect to your se
 - **Multi-tab** terminals on a single SSH connection
 - **Live system stats** - CPU temp, memory, disk, network
 - **Connection profiles** - save your servers, auto-probe on launch, delete the ones you regret
+- **SSH agent support** - use your system SSH agent (OpenSSH on Windows, Pageant fallback) or specify a key file. agent mode is default
+- **Encrypted key passphrase** - opt-in "save encrypted" so you don't retype it every session (AES-256-GCM, tied to install)
 - **Host key verification** - TOFU model, checks `~/.ssh/known_hosts`, yells at you if the key changes
 - **Connection drop detection** - knows when your SSH dies and tells you about it instead of sitting there like nothing happened
 - **Portable** -single `.exe`, config saves next to it, no installer
@@ -32,7 +34,7 @@ Config saves as `kurolink.json` next to the exe. Move the folder wherever you wa
 3. Hit CONNECT · CLI
 4. You have a terminal now
 
-Profiles auto-save. The app remembers your last connection and auto-probes it on launch. `~/.ssh/id_ed25519` is the default key path. SSH key auth only -no password login.
+Profiles auto-save. The app remembers your last connection and auto-probes it on launch. SSH agent is the default auth mode - if you have keys loaded in your system agent, it just works. Toggle to key file mode if you'd rather point at a specific key. SSH key auth only - no password login.
 
 ## host requirements
 
@@ -63,7 +65,9 @@ Most people should just download the release. If you want to build it yourself, 
 - [x] Host key verification (TOFU)
 - [x] Connection drop detection + reconnect
 - [x] Auto-detect network interface and thermal zone (no more hardcodes at 4am)
-- [ ] VNC desktop mode (noVNC embedded) -the plumbing is there, the pixels are not
+- [x] SSH agent support (OpenSSH + Pageant)
+- [x] Encrypted passphrase storage
+- [ ] VNC desktop mode (noVNC embedded) - the plumbing is there, the pixels are not
 - [ ] File browser / SCP transfers
 - [ ] WireGuard tunnel management
 

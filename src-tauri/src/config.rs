@@ -40,10 +40,27 @@ pub struct ConnectionProfile {
     pub auth_mode: AuthMode,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WindowState {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    pub maximized: bool,
+}
+
+impl Default for WindowState {
+    fn default() -> Self {
+        Self { x: -1, y: -1, width: 1100, height: 950, maximized: false }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
     pub profiles: Vec<ConnectionProfile>,
     pub last_profile_id: Option<String>,
+    #[serde(default)]
+    pub window_state: Option<WindowState>,
 }
 
 pub fn config_path(_app: &AppHandle) -> Result<PathBuf, String> {
