@@ -8,7 +8,7 @@ SSH client that doesn't suck (I hope). Built with Tauri 2.
 
 A desktop SSH client that looks like a mecha command console. Connect to your servers, get a terminal, see system stats. That's it.
 
-- **xterm.js** terminal with WebGL rendering
+- **xterm.js** terminal with WebGL rendering, PuTTY-style clipboard (select to copy, right-click to paste), clickable URLs, search, font zoom
 - **Multi-tab** terminals on a single SSH connection
 - **Live system stats** - CPU temp, memory, disk, network
 - **Connection profiles** - save your servers, auto-probe on launch, delete the ones you regret
@@ -67,6 +67,7 @@ Most people should just download the release. If you want to build it yourself, 
 - [x] Auto-detect network interface and thermal zone (no more hardcodes at 4am)
 - [x] SSH agent support (OpenSSH + Pageant)
 - [x] Encrypted passphrase storage
+- [x] Terminal QoL (clipboard, search, clickable URLs, font zoom, 10k scrollback)
 - [ ] VNC desktop mode (noVNC embedded) - the plumbing is there, the pixels are not
 - [ ] File browser / SCP transfers
 - [ ] WireGuard tunnel management
