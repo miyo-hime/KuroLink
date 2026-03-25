@@ -15,6 +15,14 @@ export const deleteProfile = (profileId: string) =>
 export const getLastProfile = () =>
   invoke<ConnectionProfile | null>("get_last_profile");
 
+// -- Passphrase --
+
+export const encryptPassphrase = (plaintext: string) =>
+  invoke<string>("encrypt_profile_passphrase", { plaintext });
+
+export const decryptPassphrase = (encrypted: string) =>
+  invoke<string>("decrypt_profile_passphrase", { encrypted });
+
 // -- Connection --
 
 export const probeHost = (
@@ -22,7 +30,8 @@ export const probeHost = (
   port: number,
   username: string,
   keyPath: string,
-) => invoke<HostStatus>("probe_host", { host, port, username, keyPath });
+  passphrase?: string | null,
+) => invoke<HostStatus>("probe_host", { host, port, username, keyPath, passphrase: passphrase ?? null });
 
 export const connectSsh = (
   profileId: string,

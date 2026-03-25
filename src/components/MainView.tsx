@@ -4,9 +4,9 @@ import {
   openShell,
   closeShell,
   disconnectSsh,
-  pingSession,
   fetchSystemStats,
   connectSsh,
+  decryptPassphrase,
   onSessionError,
 } from "../lib/ipc";
 import TopBar from "./TopBar";
@@ -50,31 +50,22 @@ export default function MainView({ sessionId, profile, onDisconnected, onSession
       setConnectionStatus("lost");
     });
 
-    // stats poll
+    // stats poll - single call, latency comes bundled
     const pollStats = async () => {
       try {
-        const [ping, sysStats] = await Promise.all([
-          pingSession(sessionId).catch(() => null),
-          fetchSystemStats(sessionId).catch(() => null),
-        ]);
-        if (ping != null) {
-          setLatency(ping);
-          failCountRef.current = 0;
-          setConnectionStatus((prev) => prev === "degraded" ? "connected" : prev);
-        } else {
-          failCountRef.current++;
-          if (failCountRef.current >= FAIL_THRESHOLD) {
-            setConnectionStatus((prev) => prev === "connected" ? "degraded" : prev);
-          }
-        }
-        if (sysStats) {
-          setStats((prev) => {
-            prevStatsRef.current = prev;
-            return sysStats;
-          });
-        }
+        const sysStats = await fetchSystemStats(sessionId);
+        setLatency(sysStats.latency_ms);
+        failCountRef.current = 0;
+        setConnectionStatus((prev) => prev === "degraded" ? "connected" : prev);
+        setStats((prev) => {
+          prevStatsRef.current = prev;
+          return sysStats;
+        });
       } catch {
-        // session might be gone
+        failCountRef.current++;
+        if (failCountRef.current >= FAIL_THRESHOLD) {
+          setConnectionStatus((prev) => prev === "connected" ? "degraded" : prev);
+        }
       }
     };
 
@@ -125,12 +116,17 @@ export default function MainView({ sessionId, profile, onDisconnected, onSession
   const handleReconnect = useCallback(async () => {
     setReconnecting(true);
     try {
+      let pp: string | null = null;
+      if (profile.has_passphrase && profile.saved_passphrase) {
+        pp = await decryptPassphrase(profile.saved_passphrase).catch(() => null);
+      }
       const newSessionId = await connectSsh(
         profile.id,
         profile.host,
         profile.port,
         profile.username,
         profile.key_path,
+        pp,
       );
       setConnectionStatus("connected");
       failCountRef.current = 0;

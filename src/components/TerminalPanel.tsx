@@ -69,7 +69,6 @@ export default function TerminalPanel({ sessionId, channelId, active, onClosed, 
       // canvas it is
     }
 
-    fitAddon.fit();
     termRef.current = term;
     fitRef.current = fitAddon;
 
@@ -78,7 +77,8 @@ export default function TerminalPanel({ sessionId, channelId, active, onClosed, 
       writeToShell(sessionId, channelId, data).catch(() => {});
     });
 
-    // resize -> pty resize
+    // resize -> pty resize (must be registered BEFORE first fit()
+    // so the initial size actually reaches the PTY)
     const onResizeDisposable = term.onResize(({ cols, rows }) => {
       resizeShell(sessionId, channelId, cols, rows).catch(() => {});
     });
@@ -87,6 +87,9 @@ export default function TerminalPanel({ sessionId, channelId, active, onClosed, 
     const onTitleDisposable = term.onTitleChange((title) => {
       onTitleChange?.(title);
     });
+
+    // now fit - this fires onResize with the real container dimensions
+    fitAddon.fit();
 
     // ssh output -> terminal
     let unlistenOutput: (() => void) | null = null;

@@ -7,6 +7,8 @@ export interface ConnectionProfile {
   key_path: string;
   created_at: string;
   last_connected: string | null;
+  has_passphrase: boolean;
+  saved_passphrase: string | null;
 }
 
 export interface HostStatus {
@@ -29,6 +31,7 @@ export interface SystemStats {
   uptime: string;
   net_rx_bytes: number;
   net_tx_bytes: number;
+  latency_ms: number;
 }
 
 export interface TerminalTab {

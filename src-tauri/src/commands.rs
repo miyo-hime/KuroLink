@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::time::Instant;
 use tauri::{AppHandle, State};
 
 use crate::config::ConnectionProfile;
@@ -29,6 +30,7 @@ pub struct SystemStats {
     pub uptime: String,
     pub net_rx_bytes: u64,
     pub net_tx_bytes: u64,
+    pub latency_ms: u64,
 }
 
 // config
@@ -71,6 +73,24 @@ pub async fn get_last_profile(app: AppHandle, state: State<'_, AppState>) -> Res
     Ok(profile)
 }
 
+// passphrase
+
+#[tauri::command]
+pub async fn encrypt_profile_passphrase(
+    app: AppHandle,
+    plaintext: String,
+) -> Result<String, String> {
+    crate::config::encrypt_passphrase(&app, &plaintext)
+}
+
+#[tauri::command]
+pub async fn decrypt_profile_passphrase(
+    app: AppHandle,
+    encrypted: String,
+) -> Result<String, String> {
+    crate::config::decrypt_passphrase(&app, &encrypted)
+}
+
 // connection
 
 #[tauri::command]
@@ -79,9 +99,9 @@ pub async fn probe_host(
     port: u16,
     username: String,
     key_path: String,
+    passphrase: Option<String>,
 ) -> Result<HostStatus, String> {
-    // Try to connect and gather stats
-    let result = probe_host_inner(&host, port, &username, &key_path).await;
+    let result = probe_host_inner(&host, port, &username, &key_path, passphrase.as_deref()).await;
     match result {
         Ok(status) => Ok(status),
         Err(_) => Ok(HostStatus {
@@ -102,8 +122,9 @@ async fn probe_host_inner(
     port: u16,
     username: &str,
     key_path: &str,
+    passphrase: Option<&str>,
 ) -> Result<HostStatus, String> {
-    let mut session = SshSession::connect(host, port, username, key_path, None).await?;
+    let mut session = SshSession::connect(host, port, username, key_path, passphrase).await?;
 
     let latency = session.ping().await?;
 
@@ -315,6 +336,22 @@ pub async fn ping_session(
 
 // stats
 
+// one big script so we only open one channel and hold the lock briefly
+const STATS_SCRIPT: &str = r#"
+TZONE=$(for z in /sys/class/thermal/thermal_zone*/type; do
+  [ "$(cat "$z" 2>/dev/null)" = "cpu-thermal" ] && dirname "$z" && break
+done)
+[ -z "$TZONE" ] && TZONE=/sys/class/thermal/thermal_zone0
+echo "TEMP:$(cat "$TZONE/temp" 2>/dev/null || echo -1)"
+echo "MEM:$(free -m | awk 'NR==2{print $2, $3}')"
+echo "DISK:$(df / | awk 'NR==2{print $2, $3}')"
+echo "UP:$(uptime -p 2>/dev/null || echo unknown)"
+IFACE=$(ip route show default 2>/dev/null | awk '{print $5}' | head -1)
+[ -z "$IFACE" ] && IFACE=eth0
+echo "NETRX:$(cat /sys/class/net/$IFACE/statistics/rx_bytes 2>/dev/null || echo 0)"
+echo "NETTX:$(cat /sys/class/net/$IFACE/statistics/tx_bytes 2>/dev/null || echo 0)"
+"#;
+
 #[tauri::command]
 pub async fn fetch_system_stats(
     state: State<'_, AppState>,
@@ -325,70 +362,55 @@ pub async fn fetch_system_stats(
         .get_mut(&session_id)
         .ok_or("Session not found")?;
 
-    let thermal_zone = detect_thermal_zone(&mut session.ssh).await;
-    let cpu_temp = session
-        .ssh
-        .exec_command(&format!("cat {thermal_zone}/temp"))
-        .await
-        .ok()
-        .and_then(|s| s.trim().parse::<f32>().ok())
-        .map(|t| t / 1000.0);
+    // single round-trip, also doubles as latency measurement
+    let start = Instant::now();
+    let raw = session.ssh.exec_command(STATS_SCRIPT).await.unwrap_or_default();
+    let latency_ms = start.elapsed().as_millis() as u64;
 
-    let mem_output = session
-        .ssh
-        .exec_command("free -m | awk 'NR==2{print $2, $3}'")
-        .await
-        .unwrap_or_default();
-    let mem_parts: Vec<&str> = mem_output.trim().split_whitespace().collect();
-    let memory_total_mb: u64 = mem_parts.first().and_then(|s| s.parse().ok()).unwrap_or(0);
-    let memory_used_mb: u64 = mem_parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+    // parse tagged lines
+    let mut cpu_temp: Option<f32> = None;
+    let mut memory_total_mb: u64 = 0;
+    let mut memory_used_mb: u64 = 0;
+    let mut disk_total_kb: f32 = 0.0;
+    let mut disk_used_kb: f32 = 0.0;
+    let mut uptime = "unknown".to_string();
+    let mut net_rx_bytes: u64 = 0;
+    let mut net_tx_bytes: u64 = 0;
+
+    for line in raw.lines() {
+        let line = line.trim();
+        if let Some(val) = line.strip_prefix("TEMP:") {
+            if let Ok(t) = val.trim().parse::<f32>() {
+                if t >= 0.0 { cpu_temp = Some(t / 1000.0); }
+            }
+        } else if let Some(val) = line.strip_prefix("MEM:") {
+            let parts: Vec<&str> = val.trim().split_whitespace().collect();
+            memory_total_mb = parts.first().and_then(|s| s.parse().ok()).unwrap_or(0);
+            memory_used_mb = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+        } else if let Some(val) = line.strip_prefix("DISK:") {
+            let parts: Vec<&str> = val.trim().split_whitespace().collect();
+            disk_total_kb = parts.first().and_then(|s| s.parse().ok()).unwrap_or(0.0);
+            disk_used_kb = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0.0);
+        } else if let Some(val) = line.strip_prefix("UP:") {
+            uptime = val.trim().to_string();
+        } else if let Some(val) = line.strip_prefix("NETRX:") {
+            net_rx_bytes = val.trim().parse().unwrap_or(0);
+        } else if let Some(val) = line.strip_prefix("NETTX:") {
+            net_tx_bytes = val.trim().parse().unwrap_or(0);
+        }
+    }
+
     let memory_used_percent = if memory_total_mb > 0 {
         (memory_used_mb as f32 / memory_total_mb as f32) * 100.0
     } else {
         0.0
     };
-
-    let disk_output = session
-        .ssh
-        .exec_command("df / | awk 'NR==2{print $2, $3}'")
-        .await
-        .unwrap_or_default();
-    let disk_parts: Vec<&str> = disk_output.trim().split_whitespace().collect();
-    let disk_total_kb: f32 = disk_parts.first().and_then(|s| s.parse().ok()).unwrap_or(0.0);
-    let disk_used_kb: f32 = disk_parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0.0);
     let disk_total_gb = disk_total_kb / 1_048_576.0;
     let disk_used_percent = if disk_total_kb > 0.0 {
         (disk_used_kb / disk_total_kb) * 100.0
     } else {
         0.0
     };
-
-    let uptime = session
-        .ssh
-        .exec_command("uptime -p")
-        .await
-        .unwrap_or_else(|_| "unknown".to_string())
-        .trim()
-        .to_string();
-
-    let net_iface = detect_net_iface(&mut session.ssh).await;
-    let net_rx_bytes: u64 = session
-        .ssh
-        .exec_command(&format!("cat /sys/class/net/{net_iface}/statistics/rx_bytes 2>/dev/null || echo 0"))
-        .await
-        .unwrap_or_else(|_| "0".to_string())
-        .trim()
-        .parse()
-        .unwrap_or(0);
-
-    let net_tx_bytes: u64 = session
-        .ssh
-        .exec_command(&format!("cat /sys/class/net/{net_iface}/statistics/tx_bytes 2>/dev/null || echo 0"))
-        .await
-        .unwrap_or_else(|_| "0".to_string())
-        .trim()
-        .parse()
-        .unwrap_or(0);
 
     Ok(SystemStats {
         cpu_temp,
@@ -399,6 +421,7 @@ pub async fn fetch_system_stats(
         uptime,
         net_rx_bytes,
         net_tx_bytes,
+        latency_ms,
     })
 }
 
