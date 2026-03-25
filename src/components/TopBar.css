@@ -1,5 +1,5 @@
 /* ============================================
-   TopBar — HUD Status Strip
+   topbar
    ============================================ */
 
 .top-bar {
@@ -15,7 +15,7 @@
   overflow: hidden;
 }
 
-/* Gradient glow bottom border */
+/* glow border */
 .top-bar::after {
   content: "";
   position: absolute;
@@ -33,7 +33,7 @@
   );
 }
 
-/* Ambient scan line */
+/* scan line thing */
 .top-bar::before {
   content: "";
   position: absolute;
@@ -159,7 +159,7 @@
   box-shadow: var(--glow-sm) rgba(232, 37, 78, 0.25);
 }
 
-/* ---- Disconnect confirmation ---- */
+/* ---- disconnect confirm ---- */
 
 .disconnect-confirm {
   display: flex;

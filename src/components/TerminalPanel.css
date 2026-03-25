@@ -1,5 +1,5 @@
 /* ============================================
-   TerminalPanel — Main Viewport
+   terminal
    ============================================ */
 
 .terminal-container {
@@ -18,7 +18,7 @@
   display: none;
 }
 
-/* Top edge glow separator */
+/* top edge glow */
 .terminal-container::before {
   content: "";
   position: absolute;
@@ -38,7 +38,7 @@
   pointer-events: none;
 }
 
-/* Scanline overlay — very subtle */
+/* scanlines */
 .terminal-container::after {
   content: "";
   position: absolute;
@@ -57,7 +57,7 @@
   z-index: 10;
 }
 
-/* CRT vignette — darkened edges */
+/* crt vignette */
 .terminal-container .xterm-screen {
   box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.25);
 }

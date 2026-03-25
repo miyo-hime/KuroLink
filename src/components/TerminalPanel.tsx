@@ -60,35 +60,35 @@ export default function TerminalPanel({ sessionId, channelId, active, onClosed, 
 
     term.open(containerRef.current);
 
-    // Try WebGL, fall back to canvas
+    // webgl if we can, canvas if we can't
     try {
       const webglAddon = new WebglAddon();
       webglAddon.onContextLoss(() => webglAddon.dispose());
       term.loadAddon(webglAddon);
     } catch {
-      // Canvas renderer fallback
+      // canvas it is
     }
 
     fitAddon.fit();
     termRef.current = term;
     fitRef.current = fitAddon;
 
-    // User input → SSH
+    // keystrokes -> ssh
     const onDataDisposable = term.onData((data) => {
       writeToShell(sessionId, channelId, data).catch(() => {});
     });
 
-    // Terminal resize → PTY resize
+    // resize -> pty resize
     const onResizeDisposable = term.onResize(({ cols, rows }) => {
       resizeShell(sessionId, channelId, cols, rows).catch(() => {});
     });
 
-    // Shell title updates (OSC escape sequences) → tab title
+    // osc title changes -> tab title
     const onTitleDisposable = term.onTitleChange((title) => {
       onTitleChange?.(title);
     });
 
-    // SSH output → terminal
+    // ssh output -> terminal
     let unlistenOutput: (() => void) | null = null;
     let unlistenClosed: (() => void) | null = null;
 
@@ -100,7 +100,7 @@ export default function TerminalPanel({ sessionId, channelId, active, onClosed, 
       onClosed?.();
     }).then((fn) => { unlistenClosed = fn; });
 
-    // Resize observer
+    // resize observer
     const resizeObserver = new ResizeObserver(() => {
       fitAddon.fit();
     });
@@ -117,7 +117,7 @@ export default function TerminalPanel({ sessionId, channelId, active, onClosed, 
     };
   }, [sessionId, channelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Re-fit and focus when tab becomes active
+  // re-fit on tab switch
   useEffect(() => {
     if (active && fitRef.current && termRef.current) {
       fitRef.current.fit();

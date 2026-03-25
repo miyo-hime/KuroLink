@@ -4,12 +4,12 @@
   position: relative;
 }
 
-/* View enter animation */
+/* view enter */
 .app > * {
   animation: view-enter 0.35s ease-out both;
 }
 
-/* Glitch-out transition class — applied briefly on disconnect */
+/* glitch on disconnect */
 .view-glitch-out {
   animation: glitch-out 0.4s ease-out forwards !important;
 }

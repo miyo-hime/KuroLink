@@ -38,20 +38,19 @@ export default function MainView({ sessionId, profile, onDisconnected, onSession
   const mountedRef = useRef(false);
   const failCountRef = useRef(0);
 
-  // Guard against React StrictMode double-mount in dev.
-  // Prevents duplicate shell opens. Harmless in prod where StrictMode
-  // doesn't double-fire. Revisit if we need legitimate remounts.
+  // strictmode double-mount guard. prevents duplicate shell opens.
+  // harmless in prod, revisit if we need legit remounts
   useEffect(() => {
     if (mountedRef.current) return;
     mountedRef.current = true;
     createNewTab();
 
-    // Listen for session errors from backend
+    // session errors from backend
     const unlistenPromise = onSessionError(sessionId, (_msg) => {
       setConnectionStatus("lost");
     });
 
-    // Fetch stats immediately, then poll
+    // stats poll
     const pollStats = async () => {
       try {
         const [ping, sysStats] = await Promise.all([
@@ -75,7 +74,7 @@ export default function MainView({ sessionId, profile, onDisconnected, onSession
           });
         }
       } catch {
-        // Session might be gone
+        // session might be gone
       }
     };
 
@@ -108,7 +107,7 @@ export default function MainView({ sessionId, profile, onDisconnected, onSession
       await closeShell(sessionId, channelId).catch(() => {});
       setTabs((prev) => {
         const next = prev.filter((t) => t.channelId !== channelId);
-        // If we closed the active tab, switch to the last remaining
+        // closed the active tab, switch to last one
         if (channelId === activeTabId && next.length > 0) {
           setActiveTabId(next[next.length - 1].channelId);
         }
@@ -195,7 +194,7 @@ export default function MainView({ sessionId, profile, onDisconnected, onSession
           <div className="de-placeholder">
             <div className="de-placeholder-icon">&#9634;</div>
             <div className="de-placeholder-title">DESKTOP ENVIRONMENT</div>
-            <div className="de-placeholder-sub">VNC integration — coming in Phase 2</div>
+            <div className="de-placeholder-sub">VNC integration - coming in phase 2</div>
           </div>
         )}
         {connectionStatus === "lost" && (

@@ -1,5 +1,5 @@
 /* ============================================
-   StatusBar — Telemetry Readout
+   statusbar
    ============================================ */
 
 .status-bar {
@@ -15,7 +15,7 @@
   position: relative;
 }
 
-/* Gradient glow top border */
+/* glow border */
 .status-bar::before {
   content: "";
   position: absolute;

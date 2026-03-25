@@ -80,7 +80,7 @@ export default function ConnectionScreen({ onConnected }: Props) {
               const result = await probeHost(last.host, last.port, last.username, last.key_path);
               setStatus(result);
             } catch {
-              // Silently fail — user can manually probe
+              // whatever, they can probe manually
             } finally {
               setProbing(false);
             }
@@ -169,221 +169,243 @@ export default function ConnectionScreen({ onConnected }: Props) {
   return (
     <div className="connection-screen">
       <div className={`connection-content${connecting ? " boot-active" : ""}`}>
-        {/* Logo */}
+        {/* logo */}
         <KuroLinkLogo />
 
-        {/* Profile selector */}
-        {profiles.length > 0 && (
-          <div className="profile-selector">
-            <label>PROFILE</label>
-            <div className="profile-selector-row">
-            <select
-              value={selectedId || ""}
-              onChange={(e) => {
-                const p = profiles.find((p) => p.id === e.target.value);
-                if (p) {
-                  setSelectedId(p.id);
-                  setForm({
-                    name: p.name,
-                    host: p.host,
-                    port: p.port,
-                    username: p.username,
-                    key_path: p.key_path,
-                    last_connected: p.last_connected,
-                  });
-                } else {
-                  setSelectedId(null);
-                  setForm({ ...DEFAULT_PROFILE });
-                }
-                setStatus(null);
-              }}
-            >
-              <option value="">New connection...</option>
-              {profiles.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.host})
-                </option>
-              ))}
-            </select>
-            {selectedId && (
-              <button
-                className="btn-delete-profile"
-                title="Delete profile"
-                onClick={async () => {
-                  await deleteProfile(selectedId);
-                  setProfiles((prev) => prev.filter((p) => p.id !== selectedId));
-                  setSelectedId(null);
-                  setForm({ ...DEFAULT_PROFILE });
-                  setStatus(null);
-                }}
-              >
-                DEL
-              </button>
+        {/* two-column layout */}
+        <div className="connection-body">
+          {/* left side */}
+          <div className="connection-panels">
+            {/* profiles */}
+            {profiles.length > 0 && (
+              <div className="profile-selector">
+                <label>PROFILE</label>
+                <div className="profile-selector-row">
+                <select
+                  value={selectedId || ""}
+                  onChange={(e) => {
+                    const p = profiles.find((p) => p.id === e.target.value);
+                    if (p) {
+                      setSelectedId(p.id);
+                      setForm({
+                        name: p.name,
+                        host: p.host,
+                        port: p.port,
+                        username: p.username,
+                        key_path: p.key_path,
+                        last_connected: p.last_connected,
+                      });
+                    } else {
+                      setSelectedId(null);
+                      setForm({ ...DEFAULT_PROFILE });
+                    }
+                    setStatus(null);
+                  }}
+                >
+                  <option value="">New connection...</option>
+                  {profiles.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.host})
+                    </option>
+                  ))}
+                </select>
+                {selectedId && (
+                  <button
+                    className="btn-delete-profile"
+                    title="Delete profile"
+                    onClick={async () => {
+                      await deleteProfile(selectedId);
+                      setProfiles((prev) => prev.filter((p) => p.id !== selectedId));
+                      setSelectedId(null);
+                      setForm({ ...DEFAULT_PROFILE });
+                      setStatus(null);
+                    }}
+                  >
+                    DEL
+                  </button>
+                )}
+                </div>
+              </div>
             )}
+
+            {/* form */}
+            <div className="hud-frame form-panel">
+              <span className="hud-frame-label">CONNECTION PARAMETERS</span>
+              <div className="form-row">
+                <label className="field-label">NAME</label>
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="homelab"
+                />
+              </div>
+              <div className="form-row">
+                <label className="field-label">HOST</label>
+                <input
+                  type="text"
+                  value={form.host}
+                  onChange={(e) => setForm({ ...form, host: e.target.value })}
+                  placeholder="192.168.x.x"
+                />
+              </div>
+              <div className="form-row">
+                <label className="field-label">PORT</label>
+                <input
+                  type="number"
+                  value={form.port}
+                  onChange={(e) =>
+                    setForm({ ...form, port: parseInt(e.target.value) || 22 })
+                  }
+                />
+              </div>
+              <div className="form-row">
+                <label className="field-label">USER</label>
+                <input
+                  type="text"
+                  value={form.username}
+                  onChange={(e) => setForm({ ...form, username: e.target.value })}
+                  placeholder="user"
+                />
+              </div>
+              <div className="form-row">
+                <label className="field-label">KEY</label>
+                <input
+                  type="text"
+                  value={form.key_path}
+                  onChange={(e) => setForm({ ...form, key_path: e.target.value })}
+                  placeholder="~/.ssh/id_ed25519"
+                />
+              </div>
             </div>
-          </div>
-        )}
 
-        {/* Connection form */}
-        <div className="hud-frame form-panel">
-          <span className="hud-frame-label">CONNECTION PARAMETERS</span>
-          <div className="form-row">
-            <label className="field-label">NAME</label>
-            <input
-              type="text"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="homelab"
-            />
-          </div>
-          <div className="form-row">
-            <label className="field-label">HOST</label>
-            <input
-              type="text"
-              value={form.host}
-              onChange={(e) => setForm({ ...form, host: e.target.value })}
-              placeholder="192.168.x.x"
-            />
-          </div>
-          <div className="form-row">
-            <label className="field-label">PORT</label>
-            <input
-              type="number"
-              value={form.port}
-              onChange={(e) =>
-                setForm({ ...form, port: parseInt(e.target.value) || 22 })
-              }
-            />
-          </div>
-          <div className="form-row">
-            <label className="field-label">USER</label>
-            <input
-              type="text"
-              value={form.username}
-              onChange={(e) => setForm({ ...form, username: e.target.value })}
-              placeholder="user"
-            />
-          </div>
-          <div className="form-row">
-            <label className="field-label">KEY</label>
-            <input
-              type="text"
-              value={form.key_path}
-              onChange={(e) => setForm({ ...form, key_path: e.target.value })}
-              placeholder="~/.ssh/id_ed25519"
-            />
-          </div>
-        </div>
-
-        {/* Status panel */}
-        <div className={`hud-frame status-panel${probing ? " status-panel-probing" : ""}`}>
-          <span className="hud-frame-label">SYSTEM READOUT</span>
-          <div className="status-row">
-            <span className="field-label">STATUS</span>
-            <span className="status-value">
-              {probing ? (
-                <><span className="indicator-dot indicator-cyan indicator-pulse" /> Probing...</>
-              ) : status?.reachable ? (
-                <><span className="indicator-dot indicator-green indicator-pulse" /> Reachable</>
-              ) : status && !status.reachable ? (
-                <><span className="indicator-dot indicator-red" /> Unreachable</>
-              ) : (
-                <><span className="indicator-dot indicator-dim" /> Unknown</>
-              )}
-            </span>
-          </div>
-          {status?.reachable && (
-            <>
+            {/* status */}
+            <div className={`hud-frame status-panel${probing ? " status-panel-probing" : ""}`}>
+              <span className="hud-frame-label">SYSTEM READOUT</span>
               <div className="status-row">
-                <span className="field-label">LATENCY</span>
-                <span className={`status-value ${statClass(status.latency_ms ?? 0, 50, 150)}`}>
-                  {status.latency_ms ?? "—"}ms
+                <span className="field-label">STATUS</span>
+                <span className="status-value">
+                  {probing ? (
+                    <><span className="indicator-dot indicator-cyan indicator-pulse" /> Probing...</>
+                  ) : status?.reachable ? (
+                    <><span className="indicator-dot indicator-green indicator-pulse" /> Reachable</>
+                  ) : status && !status.reachable ? (
+                    <><span className="indicator-dot indicator-red" /> Unreachable</>
+                  ) : (
+                    <><span className="indicator-dot indicator-dim" /> Unknown</>
+                  )}
                 </span>
               </div>
-              {status.uptime && (
-                <div className="status-row">
-                  <span className="field-label">UPTIME</span>
-                  <span className="status-value">{status.uptime}</span>
-                </div>
-              )}
-              {status.cpu_temp != null && (
-                <div className="stat-row-bar">
-                  <div className="stat-row-header">
-                    <span className="field-label">CPU</span>
-                    <span className={`status-value ${statClass(status.cpu_temp, 60, 75)}`}>
-                      {status.cpu_temp.toFixed(1)}°C
+              {status?.reachable && (
+                <>
+                  <div className="status-row">
+                    <span className="field-label">LATENCY</span>
+                    <span className={`status-value ${statClass(status.latency_ms ?? 0, 50, 150)}`}>
+                      {status.latency_ms ?? "—"}ms
                     </span>
                   </div>
-                  <div className="stat-bar">
-                    <div
-                      className={`stat-bar-fill ${statClass(status.cpu_temp, 60, 75)}`}
-                      style={{ width: `${Math.min(status.cpu_temp, 100)}%` }}
-                    />
-                  </div>
-                </div>
+                  {status.uptime && (
+                    <div className="status-row">
+                      <span className="field-label">UPTIME</span>
+                      <span className="status-value">{status.uptime}</span>
+                    </div>
+                  )}
+                  {status.cpu_temp != null && (
+                    <div className="stat-row-bar">
+                      <div className="stat-row-header">
+                        <span className="field-label">CPU</span>
+                        <span className={`status-value ${statClass(status.cpu_temp, 60, 75)}`}>
+                          {status.cpu_temp.toFixed(1)}°C
+                        </span>
+                      </div>
+                      <div className="stat-bar">
+                        <div
+                          className={`stat-bar-fill ${statClass(status.cpu_temp, 60, 75)}`}
+                          style={{ width: `${Math.min(status.cpu_temp, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {status.memory_used != null && (
+                    <div className="stat-row-bar">
+                      <div className="stat-row-header">
+                        <span className="field-label">MEM</span>
+                        <span className={`status-value ${statClass(status.memory_used, 70, 85)}`}>
+                          {status.memory_used.toFixed(0)}%
+                          <span className="text-secondary">of {status.memory_total}</span>
+                        </span>
+                      </div>
+                      <div className="stat-bar">
+                        <div
+                          className={`stat-bar-fill ${statClass(status.memory_used, 70, 85)}`}
+                          style={{ width: `${Math.min(status.memory_used, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {status.disk_used != null && (
+                    <div className="stat-row-bar">
+                      <div className="stat-row-header">
+                        <span className="field-label">DISK</span>
+                        <span className={`status-value ${statClass(status.disk_used, 80, 90)}`}>
+                          {status.disk_used.toFixed(0)}%
+                          <span className="text-secondary">of {status.disk_total}</span>
+                        </span>
+                      </div>
+                      <div className="stat-bar">
+                        <div
+                          className={`stat-bar-fill ${statClass(status.disk_used, 80, 90)}`}
+                          style={{ width: `${Math.min(status.disk_used, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
-              {status.memory_used != null && (
-                <div className="stat-row-bar">
-                  <div className="stat-row-header">
-                    <span className="field-label">MEM</span>
-                    <span className={`status-value ${statClass(status.memory_used, 70, 85)}`}>
-                      {status.memory_used.toFixed(0)}%
-                      <span className="text-secondary">of {status.memory_total}</span>
-                    </span>
-                  </div>
-                  <div className="stat-bar">
-                    <div
-                      className={`stat-bar-fill ${statClass(status.memory_used, 70, 85)}`}
-                      style={{ width: `${Math.min(status.memory_used, 100)}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-              {status.disk_used != null && (
-                <div className="stat-row-bar">
-                  <div className="stat-row-header">
-                    <span className="field-label">DISK</span>
-                    <span className={`status-value ${statClass(status.disk_used, 80, 90)}`}>
-                      {status.disk_used.toFixed(0)}%
-                      <span className="text-secondary">of {status.disk_total}</span>
-                    </span>
-                  </div>
-                  <div className="stat-bar">
-                    <div
-                      className={`stat-bar-fill ${statClass(status.disk_used, 80, 90)}`}
-                      style={{ width: `${Math.min(status.disk_used, 100)}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-            </>
-          )}
+            </div>
+          </div>
+
+          {/* command switches */}
+          <div className="command-switches">
+            <span className="command-switches-label">COMMAND</span>
+
+            {/* probe */}
+            <button
+              className={`cmd-switch${probing ? " cmd-switch-active" : ""}${status?.reachable ? " cmd-switch-success" : ""}`}
+              onClick={handleProbe}
+              disabled={!formValid || probing}
+            >
+              <span className={`cmd-switch-indicator${probing ? " indicator-pulse" : ""}${status?.reachable ? " indicator-green" : ""}`} />
+              <span className="cmd-switch-label">PROBE</span>
+              <span className="cmd-switch-sub">SCAN</span>
+            </button>
+
+            {/* cli */}
+            <button
+              className={`cmd-switch cmd-switch-primary${connecting ? " cmd-switch-active" : ""}`}
+              onClick={handleConnect}
+              disabled={!formValid || connecting}
+            >
+              <span className={`cmd-switch-indicator${connecting ? " indicator-pulse indicator-cyan" : ""}`} />
+              <span className="cmd-switch-label">CLI</span>
+              <span className="cmd-switch-sub">TERMINAL</span>
+            </button>
+
+            {/* de - locked for now */}
+            <button
+              className="cmd-switch cmd-switch-locked"
+              disabled
+              title="Coming in Phase 2"
+            >
+              <span className="cmd-switch-indicator" />
+              <span className="cmd-switch-label">DE</span>
+              <span className="cmd-switch-sub">DESKTOP</span>
+              <span className="cmd-switch-lock">LOCKED</span>
+            </button>
+          </div>
         </div>
 
-        {/* Probe button */}
-        <button
-          className={`btn btn-secondary${probing ? " btn-loading" : ""}`}
-          onClick={handleProbe}
-          disabled={!formValid || probing}
-        >
-          {probing ? "PROBING..." : "PROBE HOST"}
-        </button>
-
-        {/* Connect buttons */}
-        <div className="connect-buttons">
-          <button
-            className={`btn btn-primary${connecting ? " btn-loading" : ""}`}
-            onClick={handleConnect}
-            disabled={!formValid || connecting}
-          >
-            {connecting ? "CONNECTING..." : "CONNECT · CLI"}
-          </button>
-          <button className="btn btn-disabled" disabled title="Coming in Phase 2">
-            CONNECT · DE
-          </button>
-        </div>
-
-        {/* Passphrase prompt */}
+        {/* passphrase */}
         {passphrasePrompt && (
           <div className="hud-frame passphrase-panel">
             <span className="hud-frame-label">KEY PASSPHRASE</span>
@@ -411,10 +433,10 @@ export default function ConnectionScreen({ onConnected }: Props) {
           </div>
         )}
 
-        {/* Error display */}
+        {/* error */}
         {error && <div className="error-msg">{error}</div>}
 
-        {/* Last session info */}
+        {/* last session */}
         {form.last_connected && (
           <div className="last-session">
             last session: {formatTimestamp(form.last_connected)}

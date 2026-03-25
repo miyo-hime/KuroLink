@@ -8,7 +8,7 @@ pub enum ChannelKind {
     Shell {
         input_tx: mpsc::Sender<ChannelInput>,
     },
-    // Phase 2: Vnc { ... }
+    // phase 2: Vnc { ... }
 }
 
 pub struct ActiveChannel {

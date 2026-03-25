@@ -8,7 +8,7 @@ use std::time::Instant;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
 
-// -- Handler --
+// handler
 
 pub struct SshHandler {
     known_hosts_path: PathBuf,
@@ -16,10 +16,8 @@ pub struct SshHandler {
 }
 
 impl SshHandler {
-    /// Verify a server key against known_hosts (TOFU model).
-    /// - Unknown host: trust and append to known_hosts, return Ok(true)
-    /// - Known host, matching key: return Ok(true)
-    /// - Known host, different key: return Ok(false) (potential MITM)
+    /// check server key against known_hosts. TOFU - trust on first use,
+    /// reject if the key changed (possible MITM)
     fn verify_known_host(&self, server_key: &PublicKey) -> Result<bool, String> {
         let key_str = server_key.to_string();
         let host = &self.host;
@@ -35,11 +33,11 @@ impl SshHandler {
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
-            // Format: hostname algorithm base64key [comment]
+            // format: hostname algorithm base64key [comment]
             let Some((entry_host, remaining)) = line.split_once(' ') else { continue };
 
             if entry_host == host {
-                // Host found—compare the key portion
+                // found it, check if key matches
                 if remaining.trim() == key_str.trim() {
                     return Ok(true);
                 } else {
@@ -52,7 +50,7 @@ impl SshHandler {
             }
         }
 
-        // Host not in known_hosts—TOFU: trust and save
+        // new host, trust and save (TOFU)
         log::info!("New host {host}, adding to known_hosts (TOFU)");
         if let Some(parent) = self.known_hosts_path.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -65,7 +63,7 @@ impl SshHandler {
             .and_then(|mut f| std::io::Write::write_all(&mut f, entry.as_bytes()))
         {
             log::error!("Failed to write known_hosts: {e}");
-            // Don't fail the connection—just warn
+            // don't fail the connection over this
         }
 
         Ok(true)
@@ -90,7 +88,7 @@ impl client::Handler for SshHandler {
     }
 }
 
-// -- Session --
+// session
 
 pub struct SshSession {
     handle: client::Handle<SshHandler>,
@@ -242,7 +240,7 @@ impl SshSession {
     }
 }
 
-// -- Channel IO bridge --
+// channel io bridge
 
 pub enum ChannelInput {
     Data(Vec<u8>),
@@ -250,8 +248,8 @@ pub enum ChannelInput {
     Close,
 }
 
-/// Spawns a tokio task that bridges a russh channel to Tauri events.
-/// Returns an mpsc::Sender for sending input/resize/close to the channel.
+/// bridges a russh channel to tauri events. returns a sender for
+/// input/resize/close from the frontend
 pub fn spawn_channel_io(
     app: AppHandle,
     session_id: String,
@@ -264,7 +262,7 @@ pub fn spawn_channel_io(
         let mut user_closed = false;
         loop {
             tokio::select! {
-                // Data from the remote (SSH -> frontend)
+                // data from remote -> frontend
                 msg = channel.wait() => {
                     match msg {
                         Some(ChannelMsg::Data { data }) => {
@@ -278,13 +276,13 @@ pub fn spawn_channel_io(
                             let _ = app.emit(&event, text);
                         }
                         Some(ChannelMsg::ExitStatus { .. }) | Some(ChannelMsg::Eof) => {
-                            // Keep looping until Close/None
+                            // keep going
                         }
                         Some(ChannelMsg::Close) | None => {
                             let event = format!("terminal-closed-{channel_id}");
                             let _ = app.emit(&event, ());
                             if !user_closed {
-                                // Unexpected close—signal session error
+                                // unexpected close, tell the frontend
                                 let err_event = format!("session-error-{session_id}");
                                 let _ = app.emit(&err_event, "Connection lost");
                             }
@@ -293,7 +291,7 @@ pub fn spawn_channel_io(
                         _ => {}
                     }
                 }
-                // Input from the frontend (frontend -> SSH)
+                // input from frontend -> ssh
                 input = rx.recv() => {
                     match input {
                         Some(ChannelInput::Data(bytes)) => {

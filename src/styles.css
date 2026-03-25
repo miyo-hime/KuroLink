@@ -1,50 +1,49 @@
 /* ============================================
-   KUROLINK — Global Design Tokens & Foundation
-   NERV/Gundam Command Console Aesthetic
+   kurolink - design tokens
    ============================================ */
 
 :root {
-  /* Backgrounds — cool blue-shifted for military console */
+  /* backgrounds */
   --bg-primary: #08080e;
   --bg-secondary: #0e0e18;
   --bg-tertiary: #141420;
   --bg-terminal: #06060c;
 
-  /* Accents — instrument panel, not nightclub */
+  /* accents */
   --accent-primary: #00d4ff;
   --accent-secondary: #e8254e;
   --accent-tertiary: #8ccc26;
   --accent-warning: #e8a800;
   --accent-success: #22c55e;
 
-  /* Text hierarchy */
+  /* text */
   --text-primary: #d8d8e4;
   --text-secondary: #9898b0;
   --text-dim: #4a4a64;
   --text-label: #606080;
 
-  /* Borders & glows */
+  /* borders & glows */
   --border-subtle: rgba(0, 212, 255, 0.08);
   --border-glow: rgba(0, 212, 255, 0.18);
   --border-active: rgba(0, 212, 255, 0.35);
 
-  /* HUD decorative */
+  /* hud stuff */
   --hud-grid: rgba(0, 212, 255, 0.04);
   --hud-line: rgba(0, 212, 255, 0.12);
   --panel-shadow: rgba(0, 0, 0, 0.6);
 
-  /* Animation timing */
+  /* timing */
   --transition-fast: 0.12s ease;
   --transition-normal: 0.2s ease;
   --transition-smooth: 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* Glow presets */
+  /* glow presets */
   --glow-sm: 0 0 6px;
   --glow-md: 0 0 12px;
   --glow-lg: 0 0 24px;
 }
 
-/* ---- Reset ---- */
+/* ---- reset ---- */
 
 * {
   margin: 0;
@@ -84,14 +83,14 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ---- Focus styling ---- */
+/* ---- focus ---- */
 
 *:focus-visible {
   outline: none;
   box-shadow: 0 0 0 1px var(--accent-primary), var(--glow-sm) rgba(0, 212, 255, 0.25);
 }
 
-/* ---- Scrollbar ---- */
+/* ---- scrollbar ---- */
 
 ::-webkit-scrollbar {
   width: 6px;
@@ -112,8 +111,7 @@ body {
 }
 
 /* ============================================
-   HUD Frame System
-   Angular panels with corner accents & glow
+   hud frames
    ============================================ */
 
 .hud-frame {
@@ -126,7 +124,7 @@ body {
   transition: border-color var(--transition-normal);
 }
 
-/* Top-right corner accent */
+/* top-right corner */
 .hud-frame::before {
   content: "";
   position: absolute;
@@ -141,7 +139,7 @@ body {
   animation: border-breathe 4s ease-in-out infinite;
 }
 
-/* Bottom-left corner accent */
+/* bottom-left corner */
 .hud-frame::after {
   content: "";
   position: absolute;
@@ -171,7 +169,7 @@ body {
   line-height: 1;
 }
 
-/* ---- Status indicators ---- */
+/* ---- indicators ---- */
 
 .indicator-dot {
   display: inline-block;
@@ -217,7 +215,7 @@ body {
   animation: glow-pulse 2s ease-in-out infinite;
 }
 
-/* ---- Status color classes ---- */
+/* ---- stat colors ---- */
 
 .stat-nominal {
   color: var(--accent-success);
@@ -232,7 +230,7 @@ body {
   animation: glow-pulse 2s ease-in-out infinite;
 }
 
-/* ---- Utility ---- */
+/* ---- util ---- */
 
 .glow-text {
   text-shadow: var(--glow-sm) currentColor;
@@ -242,7 +240,7 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* ---- HUD divider ---- */
+/* ---- divider ---- */
 
 .hud-divider {
   height: 1px;
@@ -258,7 +256,7 @@ body {
 }
 
 /* ============================================
-   Global Keyframes
+   keyframes
    ============================================ */
 
 @keyframes border-breathe {
