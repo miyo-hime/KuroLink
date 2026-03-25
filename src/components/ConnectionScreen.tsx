@@ -41,7 +41,7 @@ const DEFAULT_PROFILE: Omit<ConnectionProfile, "id" | "created_at"> = {
   last_connected: null,
   has_passphrase: false,
   saved_passphrase: null,
-  auth_mode: "key_file",
+  auth_mode: "agent",
 };
 
 function statClass(value: number, cautionAt: number, criticalAt: number): string {
@@ -89,7 +89,7 @@ export default function ConnectionScreen({ onConnected }: Props) {
             last_connected: last.last_connected,
             has_passphrase: last.has_passphrase ?? false,
             saved_passphrase: last.saved_passphrase ?? null,
-            auth_mode: last.auth_mode ?? "key_file",
+            auth_mode: last.auth_mode ?? "agent",
           });
           if (last.saved_passphrase) {
             setSavePass(true);
@@ -103,7 +103,7 @@ export default function ConnectionScreen({ onConnected }: Props) {
           }
 
           // auto-probe if we have enough info
-          const mode = last.auth_mode ?? "key_file";
+          const mode = last.auth_mode ?? "agent";
           const canProbe = mode === "agent"
             ? last.host && last.username
             : last.host && last.username && last.key_path;
@@ -257,7 +257,7 @@ export default function ConnectionScreen({ onConnected }: Props) {
                         last_connected: p.last_connected,
                         has_passphrase: p.has_passphrase ?? false,
                         saved_passphrase: p.saved_passphrase ?? null,
-                        auth_mode: p.auth_mode ?? "key_file",
+                        auth_mode: p.auth_mode ?? "agent",
                       });
                       setSavePass(!!p.saved_passphrase);
                       if (p.saved_passphrase) {
