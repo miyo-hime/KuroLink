@@ -13,6 +13,14 @@ pub fn known_hosts_path() -> Result<PathBuf, String> {
     Ok(PathBuf::from(home).join(".ssh").join("known_hosts"))
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthMode {
+    #[default]
+    KeyFile,
+    Agent,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionProfile {
     pub id: String,
@@ -28,6 +36,8 @@ pub struct ConnectionProfile {
     pub has_passphrase: bool,
     #[serde(default)]
     pub saved_passphrase: Option<String>,
+    #[serde(default)]
+    pub auth_mode: AuthMode,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

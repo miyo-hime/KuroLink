@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ConnectionProfile, HostStatus, SystemStats } from "./types";
+import type { ConnectionProfile, HostStatus, SystemStats, AgentIdentityInfo } from "./types";
 
 // -- Config --
 
@@ -23,6 +23,14 @@ export const encryptPassphrase = (plaintext: string) =>
 export const decryptPassphrase = (encrypted: string) =>
   invoke<string>("decrypt_profile_passphrase", { encrypted });
 
+// -- Agent --
+
+export const detectAgent = () =>
+  invoke<boolean>("detect_agent");
+
+export const listAgentIdentities = () =>
+  invoke<AgentIdentityInfo[]>("list_agent_identities");
+
 // -- Connection --
 
 export const probeHost = (
@@ -31,7 +39,8 @@ export const probeHost = (
   username: string,
   keyPath: string,
   passphrase?: string | null,
-) => invoke<HostStatus>("probe_host", { host, port, username, keyPath, passphrase: passphrase ?? null });
+  authMode?: string | null,
+) => invoke<HostStatus>("probe_host", { host, port, username, keyPath, passphrase: passphrase ?? null, authMode: authMode ?? null });
 
 export const connectSsh = (
   profileId: string,
@@ -40,6 +49,7 @@ export const connectSsh = (
   username: string,
   keyPath: string,
   passphrase?: string | null,
+  authMode?: string | null,
 ) =>
   invoke<string>("connect_ssh", {
     profileId,
@@ -48,6 +58,7 @@ export const connectSsh = (
     username,
     keyPath,
     passphrase: passphrase ?? null,
+    authMode: authMode ?? null,
   });
 
 export const disconnectSsh = (sessionId: string) =>

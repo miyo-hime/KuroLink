@@ -127,6 +127,7 @@ export default function MainView({ sessionId, profile, onDisconnected, onSession
         profile.username,
         profile.key_path,
         pp,
+        profile.auth_mode,
       );
       setConnectionStatus("connected");
       failCountRef.current = 0;

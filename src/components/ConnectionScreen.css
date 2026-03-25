@@ -334,6 +334,65 @@
   box-shadow: 0 0 4px var(--accent-primary);
 }
 
+/* agent keys */
+
+.agent-keys-panel {
+  padding: 0.3rem 0.5rem;
+}
+
+.agent-status {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 0.3rem;
+}
+
+.agent-status-ok {
+  color: var(--accent-success);
+}
+
+.agent-status-warn {
+  color: var(--accent-warning);
+}
+
+.agent-keys-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.agent-key-item {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.6rem;
+  padding: 0.2rem 0;
+  border-left: 2px solid var(--hud-line);
+  padding-left: 0.5rem;
+}
+
+.agent-key-type {
+  color: var(--accent-primary);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  flex-shrink: 0;
+}
+
+.agent-key-fp {
+  color: var(--text-dim);
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-key-comment {
+  color: var(--text-secondary);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ---- status ---- */
 
 .status-panel {

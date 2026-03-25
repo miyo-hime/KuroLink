@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import type { ConnectionProfile, HostStatus } from "../lib/types";
+import type { ConnectionProfile, HostStatus, AgentIdentityInfo, AuthMode } from "../lib/types";
 import {
   getProfiles,
   getLastProfile,
@@ -9,6 +9,8 @@ import {
   connectSsh,
   encryptPassphrase,
   decryptPassphrase,
+  detectAgent,
+  listAgentIdentities,
 } from "../lib/ipc";
 import KuroLinkLogo from "./KuroLinkLogo";
 import "./ConnectionScreen.css";
@@ -39,6 +41,7 @@ const DEFAULT_PROFILE: Omit<ConnectionProfile, "id" | "created_at"> = {
   last_connected: null,
   has_passphrase: false,
   saved_passphrase: null,
+  auth_mode: "key_file",
 };
 
 function statClass(value: number, cautionAt: number, criticalAt: number): string {
@@ -58,10 +61,18 @@ export default function ConnectionScreen({ onConnected }: Props) {
   const [passphrasePrompt, setPassphrasePrompt] = useState(false);
   const [passphrase, setPassphrase] = useState("");
   const [savePass, setSavePass] = useState(false);
+  const [agentAvailable, setAgentAvailable] = useState(false);
+  const [agentKeys, setAgentKeys] = useState<AgentIdentityInfo[]>([]);
 
   // Load profiles on mount, auto-probe last profile
   useEffect(() => {
     (async () => {
+      // check for ssh agent in the background
+      detectAgent().then((ok) => {
+        setAgentAvailable(ok);
+        if (ok) listAgentIdentities().then(setAgentKeys).catch(() => {});
+      }).catch(() => {});
+
       try {
         const allProfiles = await getProfiles();
         setProfiles(allProfiles);
@@ -78,6 +89,7 @@ export default function ConnectionScreen({ onConnected }: Props) {
             last_connected: last.last_connected,
             has_passphrase: last.has_passphrase ?? false,
             saved_passphrase: last.saved_passphrase ?? null,
+            auth_mode: last.auth_mode ?? "key_file",
           });
           if (last.saved_passphrase) {
             setSavePass(true);
@@ -91,14 +103,18 @@ export default function ConnectionScreen({ onConnected }: Props) {
           }
 
           // auto-probe if we have enough info
-          if (last.host && last.username && last.key_path) {
+          const mode = last.auth_mode ?? "key_file";
+          const canProbe = mode === "agent"
+            ? last.host && last.username
+            : last.host && last.username && last.key_path;
+          if (canProbe) {
             setProbing(true);
             try {
               let pp: string | null = null;
-              if (last.has_passphrase && last.saved_passphrase) {
+              if (mode === "key_file" && last.has_passphrase && last.saved_passphrase) {
                 pp = await decryptPassphrase(last.saved_passphrase).catch(() => null);
               }
-              const result = await probeHost(last.host, last.port, last.username, last.key_path, pp);
+              const result = await probeHost(last.host, last.port, last.username, last.key_path, pp, mode);
               setStatus(result);
             } catch {
               // whatever, they can probe manually
@@ -113,18 +129,23 @@ export default function ConnectionScreen({ onConnected }: Props) {
     })();
   }, []);
 
+  const formValid = form.auth_mode === "agent"
+    ? form.host && form.username
+    : form.host && form.username && form.key_path;
+
   const handleProbe = useCallback(async () => {
-    if (!form.host || !form.username || !form.key_path) return;
+    if (!formValid) return;
     setProbing(true);
     setError(null);
     try {
-      const pp = form.has_passphrase ? passphrase || null : null;
+      const pp = form.auth_mode === "key_file" && form.has_passphrase ? passphrase || null : null;
       const result = await probeHost(
         form.host,
         form.port,
         form.username,
         form.key_path,
         pp,
+        form.auth_mode,
       );
       setStatus(result);
     } catch (e) {
@@ -159,6 +180,7 @@ export default function ConnectionScreen({ onConnected }: Props) {
         last_connected: now,
         has_passphrase: form.has_passphrase,
         saved_passphrase: savedPassphrase,
+        auth_mode: form.auth_mode,
       };
       await saveProfile(profile);
 
@@ -169,6 +191,7 @@ export default function ConnectionScreen({ onConnected }: Props) {
         form.username,
         form.key_path,
         pp,
+        form.auth_mode,
       );
       onConnected(sessionId, profileId, profile);
     } catch (e) {
@@ -204,8 +227,6 @@ export default function ConnectionScreen({ onConnected }: Props) {
     setPassphrase("");
   };
 
-  const formValid = form.host && form.username && form.key_path;
-
   return (
     <div className="connection-screen">
       <div className={`connection-content${connecting ? " boot-active" : ""}`}>
@@ -236,6 +257,7 @@ export default function ConnectionScreen({ onConnected }: Props) {
                         last_connected: p.last_connected,
                         has_passphrase: p.has_passphrase ?? false,
                         saved_passphrase: p.saved_passphrase ?? null,
+                        auth_mode: p.auth_mode ?? "key_file",
                       });
                       setSavePass(!!p.saved_passphrase);
                       if (p.saved_passphrase) {
@@ -320,54 +342,96 @@ export default function ConnectionScreen({ onConnected }: Props) {
                   placeholder="user"
                 />
               </div>
-              <div className="form-row">
-                <label className="field-label">KEY</label>
-                <input
-                  type="text"
-                  value={form.key_path}
-                  onChange={(e) => setForm({ ...form, key_path: e.target.value })}
-                  placeholder="~/.ssh/id_ed25519"
-                />
-              </div>
               <div className="form-row form-row-checkbox">
                 <label className="checkbox-label">
                   <input
                     type="checkbox"
-                    checked={form.has_passphrase}
+                    checked={form.auth_mode === "agent"}
                     onChange={(e) => {
-                      setForm({ ...form, has_passphrase: e.target.checked });
-                      if (!e.target.checked) {
-                        setPassphrase("");
-                        setSavePass(false);
+                      const mode: AuthMode = e.target.checked ? "agent" : "key_file";
+                      setForm({ ...form, auth_mode: mode });
+                      if (mode === "agent" && agentKeys.length === 0) {
+                        listAgentIdentities().then(setAgentKeys).catch(() => {});
                       }
                     }}
                   />
                   <span className="toggle-track" />
-                  <span className="toggle-label-text">KEY PASSPHRASE</span>
+                  <span className="toggle-label-text">SSH AGENT</span>
                 </label>
               </div>
-              {form.has_passphrase && (
+              {form.auth_mode === "agent" ? (
+                <div className="agent-keys-panel">
+                  {!agentAvailable ? (
+                    <div className="agent-status agent-status-warn">no agent detected</div>
+                  ) : agentKeys.length === 0 ? (
+                    <div className="agent-status agent-status-warn">no keys loaded in agent</div>
+                  ) : (
+                    <>
+                      <div className="agent-status agent-status-ok">{agentKeys.length} key{agentKeys.length !== 1 ? "s" : ""} available</div>
+                      <div className="agent-keys-list">
+                        {agentKeys.map((k, i) => (
+                          <div key={i} className="agent-key-item">
+                            <span className="agent-key-type">{k.key_type}</span>
+                            <span className="agent-key-fp">{k.fingerprint.slice(0, 24)}...</span>
+                            {k.comment && <span className="agent-key-comment">{k.comment}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              ) : (
                 <>
                   <div className="form-row">
-                    <label className="field-label">PASS</label>
+                    <label className="field-label">KEY</label>
                     <input
-                      type="password"
-                      value={passphrase}
-                      onChange={(e) => setPassphrase(e.target.value)}
-                      placeholder="key passphrase"
+                      type="text"
+                      value={form.key_path}
+                      onChange={(e) => setForm({ ...form, key_path: e.target.value })}
+                      placeholder="~/.ssh/id_ed25519"
                     />
                   </div>
                   <div className="form-row form-row-checkbox">
                     <label className="checkbox-label">
                       <input
                         type="checkbox"
-                        checked={savePass}
-                        onChange={(e) => setSavePass(e.target.checked)}
+                        checked={form.has_passphrase}
+                        onChange={(e) => {
+                          setForm({ ...form, has_passphrase: e.target.checked });
+                          if (!e.target.checked) {
+                            setPassphrase("");
+                            setSavePass(false);
+                          }
+                        }}
                       />
                       <span className="toggle-track" />
-                      <span className="toggle-label-text">SAVE ENCRYPTED</span>
+                      <span className="toggle-label-text">KEY PASSPHRASE</span>
                     </label>
                   </div>
+                  {form.has_passphrase && (
+                    <>
+                      <div className="form-row">
+                        <label className="field-label">PASS</label>
+                        <input
+                          type="password"
+                          value={passphrase}
+                          onChange={(e) => setPassphrase(e.target.value)}
+                          placeholder="key passphrase"
+                        />
+                      </div>
+                      <div className="form-row form-row-checkbox">
+                        <label className="checkbox-label">
+                          <input
+                            type="checkbox"
+                            checked={savePass}
+                            onChange={(e) => setSavePass(e.target.checked)}
+                          />
+                          <span className="toggle-track" />
+                          <span className="toggle-label-text">SAVE ENCRYPTED</span>
+                        </label>
+                      </div>
+                    </>
+                  )}
                 </>
               )}
             </div>
