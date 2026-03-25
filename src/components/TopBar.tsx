@@ -7,7 +7,9 @@ interface Props {
   connectionStatus: ConnectionStatus;
   latency: number | null;
   mode: MainMode;
+  searchActive: boolean;
   onModeChange: (mode: MainMode) => void;
+  onSearchToggle: () => void;
   onDisconnect: () => void;
 }
 
@@ -28,7 +30,7 @@ function statusIndicator(status: ConnectionStatus) {
   }
 }
 
-export default function TopBar({ hostname, connectionStatus, latency, mode, onModeChange, onDisconnect }: Props) {
+export default function TopBar({ hostname, connectionStatus, latency, mode, searchActive, onModeChange, onSearchToggle, onDisconnect }: Props) {
   const { className: indicatorClass, label: statusLabel } = statusIndicator(connectionStatus);
   const [confirming, setConfirming] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -56,6 +58,13 @@ export default function TopBar({ hostname, connectionStatus, latency, mode, onMo
         )}
       </div>
       <div className="top-bar-right">
+        <button
+          className={`mode-btn ${searchActive ? "mode-active" : ""}`}
+          onClick={onSearchToggle}
+          title="Search terminal (Ctrl+Shift+F)"
+        >
+          FIND
+        </button>
         <button
           className={`mode-btn ${mode === "cli" ? "mode-active" : ""}`}
           onClick={() => onModeChange("cli")}

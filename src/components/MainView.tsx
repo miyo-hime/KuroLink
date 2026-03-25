@@ -32,6 +32,7 @@ export default function MainView({ sessionId, profile, onDisconnected, onSession
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connected");
   const [mode, setMode] = useState<MainMode>("cli");
+  const [searchVisible, setSearchVisible] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const prevStatsRef = useRef<SystemStats | null>(null);
   const tabCountRef = useRef(0);
@@ -162,7 +163,9 @@ export default function MainView({ sessionId, profile, onDisconnected, onSession
         connectionStatus={connectionStatus}
         latency={latency}
         mode={mode}
+        searchActive={searchVisible}
         onModeChange={setMode}
+        onSearchToggle={() => setSearchVisible((v) => !v)}
         onDisconnect={handleDisconnect}
       />
       <div style={{ display: mode === "cli" ? "contents" : "none" }}>
@@ -182,6 +185,8 @@ export default function MainView({ sessionId, profile, onDisconnected, onSession
               sessionId={sessionId}
               channelId={tab.channelId}
               active={tab.channelId === activeTabId && mode === "cli"}
+              searchVisible={searchVisible && tab.channelId === activeTabId}
+              onSearchToggle={() => setSearchVisible((v) => !v)}
               onClosed={() => handleTerminalClosed(tab.channelId)}
               onTitleChange={(title) => handleTabTitleChange(tab.channelId, title)}
             />

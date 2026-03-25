@@ -106,7 +106,8 @@
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  border: 1px solid;
+  border: 1px solid var(--border-glow);
+  color: var(--text-secondary);
   cursor: pointer;
   transition: all var(--transition-fast);
   background: transparent;
@@ -118,6 +119,12 @@
     5px 100%,
     0 calc(100% - 5px)
   );
+}
+
+.mode-btn:hover:not(:disabled) {
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+  background: rgba(0, 212, 255, 0.04);
 }
 
 .mode-active {
