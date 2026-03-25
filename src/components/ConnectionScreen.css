@@ -15,7 +15,112 @@
       rgba(0, 0, 0, 0.4) 100%
     ),
     var(--bg-primary);
+  overflow: hidden;
+  position: relative;
+}
+
+/* inner scroll wrapper so content can still scroll if window is short */
+.connection-scroll {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   overflow-y: auto;
+}
+
+/* radar ping - expanding ring that reveals the grid as it passes */
+.connection-screen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  /* grid lines layered behind a radial mask - grid only shows where the ring is */
+  background:
+    repeating-linear-gradient(
+      0deg,
+      rgba(0, 212, 255, 0.08) 0px,
+      rgba(0, 212, 255, 0.08) 1px,
+      transparent 1px,
+      transparent 40px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 212, 255, 0.08) 0px,
+      rgba(0, 212, 255, 0.08) 1px,
+      transparent 1px,
+      transparent 40px
+    );
+  /* radial mask - only the ring area is visible */
+  mask-image: radial-gradient(
+    circle at 50% 50%,
+    transparent 0%,
+    transparent 38%,
+    rgba(0, 0, 0, 0.4) 42%,
+    black 46%,
+    black 50%,
+    rgba(0, 0, 0, 0.4) 54%,
+    transparent 58%,
+    transparent 100%
+  );
+  -webkit-mask-image: radial-gradient(
+    circle at 50% 50%,
+    transparent 0%,
+    transparent 38%,
+    rgba(0, 0, 0, 0.4) 42%,
+    black 46%,
+    black 50%,
+    rgba(0, 0, 0, 0.4) 54%,
+    transparent 58%,
+    transparent 100%
+  );
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  mask-position: center;
+  -webkit-mask-position: center;
+  animation: grid-ping 4s ease-out infinite;
+  z-index: 0;
+}
+
+/* slow vertical scan band across the grid */
+.connection-screen::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 150px;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(0, 212, 255, 0.003) 30%,
+    rgba(0, 212, 255, 0.008) 50%,
+    rgba(0, 212, 255, 0.003) 60%,
+    transparent 100%
+  );
+  animation: scan-line 8s linear infinite;
+  z-index: 0;
+}
+
+@keyframes grid-ping {
+  0% {
+    mask-size: 40% 40%;
+    -webkit-mask-size: 40% 40%;
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 0.6;
+  }
+  100% {
+    mask-size: 300% 300%;
+    -webkit-mask-size: 300% 300%;
+    opacity: 0;
+  }
 }
 
 .connection-content {
@@ -399,6 +504,9 @@
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+  position: relative;
+  overflow: hidden;
+  min-height: 180px;
 }
 
 .status-row {
@@ -457,10 +565,240 @@
   box-shadow: 0 0 6px var(--accent-secondary);
   animation: glow-pulse 1.5s ease-in-out infinite;
 }
+.stat-bar-fill.stat-empty {
+  background: transparent;
+  width: 0% !important;
+}
 
 .text-secondary {
   color: var(--text-secondary);
   font-size: 0.75rem;
+}
+
+/* placeholder text for idle instruments */
+.stat-placeholder {
+  color: var(--text-dim);
+  opacity: 0.4;
+  letter-spacing: 0.2em;
+}
+
+/* ---- scanline overlay ---- */
+
+.scanline-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+/* the moving scanline band */
+.scanline-overlay::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(0, 212, 255, 0.15),
+    rgba(0, 212, 255, 0.3),
+    rgba(0, 212, 255, 0.15),
+    transparent
+  );
+  box-shadow: 0 0 12px rgba(0, 212, 255, 0.2);
+  animation: scanline-sweep 1.8s linear infinite;
+}
+
+/* static noise grain */
+.scanline-overlay::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 2px,
+      rgba(0, 212, 255, 0.03) 2px,
+      rgba(0, 212, 255, 0.03) 4px
+    );
+  animation: static-noise 0.15s steps(3) infinite;
+}
+
+/* ---- signal text styles ---- */
+
+.signal-text {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+.signal-scanning {
+  color: var(--accent-primary);
+  animation: signal-blink 1s steps(2) infinite;
+}
+
+.signal-locked {
+  color: var(--accent-success);
+  animation: signal-lock 0.4s ease-out both;
+}
+
+.signal-failed {
+  color: var(--accent-secondary);
+  animation: signal-glitch 0.3s ease-out both;
+  text-shadow: 0 0 8px rgba(232, 37, 78, 0.4);
+}
+
+/* ---- stat bar noise (during scanning) ---- */
+
+.stat-bar-noise {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(0, 212, 255, 0.15) 20%,
+    transparent 25%,
+    rgba(0, 212, 255, 0.1) 40%,
+    transparent 50%,
+    rgba(0, 212, 255, 0.2) 65%,
+    transparent 75%,
+    rgba(0, 212, 255, 0.1) 90%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: noise-scroll 0.8s linear infinite;
+}
+
+/* ---- instrument rows (staggered flicker on lock) ---- */
+
+.stat-instrument {
+  transition: opacity 0.2s ease;
+}
+
+/* when stats arrive, each row flickers in */
+.status-panel-locked .stat-instrument-live {
+  animation: signal-lock 0.35s ease-out both;
+}
+
+/* ---- panel states ---- */
+
+/* idle - quiet, waiting */
+.status-panel-idle {
+  border-color: var(--border-subtle);
+}
+
+.status-panel-idle .scanline-overlay {
+  opacity: 0;
+}
+
+/* scanning - alive and searching */
+.status-panel-scanning {
+  border-color: var(--border-active) !important;
+  box-shadow: 0 0 16px rgba(0, 212, 255, 0.08);
+  animation: panel-scan-pulse 2s ease-in-out infinite;
+}
+
+.status-panel-scanning .scanline-overlay {
+  opacity: 1;
+}
+
+.status-panel-scanning .stat-placeholder {
+  animation: static-noise 0.2s steps(4) infinite;
+}
+
+/* locked - signal acquired, instruments reading */
+.status-panel-locked {
+  border-color: rgba(34, 197, 94, 0.25) !important;
+  transition: border-color 0.5s ease, box-shadow 0.5s ease;
+}
+
+.status-panel-locked .scanline-overlay {
+  opacity: 0;
+}
+
+/* failed - lost signal, red alert */
+.status-panel-failed {
+  border-color: rgba(232, 37, 78, 0.35) !important;
+  box-shadow: 0 0 12px rgba(232, 37, 78, 0.08);
+}
+
+.status-panel-failed .scanline-overlay {
+  opacity: 0.6;
+}
+
+/* red-tinted scanline for failed state */
+.status-panel-failed .scanline-overlay::before {
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(232, 37, 78, 0.1),
+    rgba(232, 37, 78, 0.2),
+    rgba(232, 37, 78, 0.1),
+    transparent
+  );
+  box-shadow: 0 0 12px rgba(232, 37, 78, 0.15);
+  animation: scanline-sweep 2.5s linear infinite;
+}
+
+.status-panel-failed .scanline-overlay::after {
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 2px,
+      rgba(232, 37, 78, 0.03) 2px,
+      rgba(232, 37, 78, 0.03) 4px
+    );
+}
+
+/* ---- status panel keyframes ---- */
+
+@keyframes scanline-sweep {
+  0% { top: -3px; }
+  100% { top: 100%; }
+}
+
+@keyframes static-noise {
+  0% { opacity: 0.4; clip-path: inset(0 0 0 0); }
+  33% { opacity: 0.7; clip-path: inset(5% 0 10% 0); }
+  66% { opacity: 0.3; clip-path: inset(15% 0 5% 0); }
+  100% { opacity: 0.5; clip-path: inset(0 0 0 0); }
+}
+
+@keyframes signal-lock {
+  0% { opacity: 0.3; filter: brightness(2); }
+  30% { opacity: 1; filter: brightness(1.5); }
+  50% { opacity: 0.6; filter: brightness(0.8); }
+  70% { opacity: 1; filter: brightness(1.2); }
+  100% { opacity: 1; filter: brightness(1); }
+}
+
+@keyframes signal-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes signal-glitch {
+  0% { transform: translateX(0); opacity: 0; }
+  15% { transform: translateX(-3px); opacity: 0.8; filter: hue-rotate(20deg); }
+  30% { transform: translateX(2px); opacity: 0.5; }
+  50% { transform: translateX(-1px); opacity: 1; }
+  100% { transform: translateX(0); opacity: 1; filter: none; }
+}
+
+@keyframes noise-scroll {
+  0% { background-position: 0% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes panel-scan-pulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(0, 212, 255, 0.04); }
+  50% { box-shadow: 0 0 20px rgba(0, 212, 255, 0.1); }
 }
 
 /* ============================================
@@ -705,12 +1043,7 @@
   letter-spacing: 0.05em;
 }
 
-/* ---- probing glow ---- */
-
-.status-panel-probing {
-  border-color: var(--border-active) !important;
-  box-shadow: 0 0 12px rgba(0, 212, 255, 0.08);
-}
+/* (probing glow moved to status-panel-scanning state) */
 
 /* ---- passphrase ---- */
 

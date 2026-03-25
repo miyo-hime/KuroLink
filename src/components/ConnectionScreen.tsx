@@ -229,6 +229,7 @@ export default function ConnectionScreen({ onConnected }: Props) {
 
   return (
     <div className="connection-screen">
+      <div className="connection-scroll">
       <div className={`connection-content${connecting ? " boot-active" : ""}`}>
         {/* logo */}
         <KuroLinkLogo />
@@ -436,89 +437,113 @@ export default function ConnectionScreen({ onConnected }: Props) {
               )}
             </div>
 
-            {/* status */}
-            <div className={`hud-frame status-panel${probing ? " status-panel-probing" : ""}`}>
+            {/* status - always visible, four visual states */}
+            <div className={`hud-frame status-panel${
+              probing ? " status-panel-scanning" :
+              status?.reachable ? " status-panel-locked" :
+              status && !status.reachable ? " status-panel-failed" :
+              " status-panel-idle"
+            }`}>
               <span className="hud-frame-label">SYSTEM READOUT</span>
+              <div className="scanline-overlay" />
+
+              {/* status line */}
               <div className="status-row">
                 <span className="field-label">STATUS</span>
                 <span className="status-value">
                   {probing ? (
-                    <><span className="indicator-dot indicator-cyan indicator-pulse" /> Probing...</>
+                    <><span className="indicator-dot indicator-cyan indicator-pulse" /><span className="signal-text signal-scanning">ACQUIRING SIGNAL...</span></>
                   ) : status?.reachable ? (
-                    <><span className="indicator-dot indicator-green indicator-pulse" /> Reachable</>
+                    <><span className="indicator-dot indicator-green indicator-pulse" /><span className="signal-text signal-locked">SIGNAL LOCKED</span></>
                   ) : status && !status.reachable ? (
-                    <><span className="indicator-dot indicator-red" /> Unreachable</>
+                    <><span className="indicator-dot indicator-red" /><span className="signal-text signal-failed">NO SIGNAL</span></>
                   ) : (
-                    <><span className="indicator-dot indicator-dim" /> Unknown</>
+                    <><span className="indicator-dot indicator-dim" /><span className="signal-text">STANDBY</span></>
                   )}
                 </span>
               </div>
-              {status?.reachable && (
-                <>
-                  <div className="status-row">
-                    <span className="field-label">LATENCY</span>
-                    <span className={`status-value ${statClass(status.latency_ms ?? 0, 50, 150)}`}>
-                      {status.latency_ms ?? "—"}ms
-                    </span>
-                  </div>
-                  {status.uptime && (
-                    <div className="status-row">
-                      <span className="field-label">UPTIME</span>
-                      <span className="status-value">{status.uptime}</span>
-                    </div>
+
+              {/* latency - always rendered */}
+              <div className={`status-row stat-instrument${status?.reachable ? " stat-instrument-live" : ""}`} style={{ animationDelay: "0.05s" }}>
+                <span className="field-label">LATENCY</span>
+                <span className={`status-value ${status?.reachable ? statClass(status.latency_ms ?? 0, 50, 150) : ""}`}>
+                  {status?.reachable ? `${status.latency_ms ?? "—"}ms` : <span className="stat-placeholder">---</span>}
+                </span>
+              </div>
+
+              {/* uptime */}
+              <div className={`status-row stat-instrument${status?.reachable ? " stat-instrument-live" : ""}`} style={{ animationDelay: "0.12s" }}>
+                <span className="field-label">UPTIME</span>
+                <span className="status-value">
+                  {status?.reachable && status.uptime ? status.uptime : <span className="stat-placeholder">---</span>}
+                </span>
+              </div>
+
+              {/* cpu */}
+              <div className={`stat-row-bar stat-instrument${status?.reachable ? " stat-instrument-live" : ""}`} style={{ animationDelay: "0.2s" }}>
+                <div className="stat-row-header">
+                  <span className="field-label">CPU</span>
+                  <span className={`status-value ${status?.reachable && status.cpu_temp != null ? statClass(status.cpu_temp, 60, 75) : ""}`}>
+                    {status?.reachable && status.cpu_temp != null
+                      ? `${status.cpu_temp.toFixed(1)}°C`
+                      : <span className="stat-placeholder">---</span>}
+                  </span>
+                </div>
+                <div className="stat-bar">
+                  {probing ? (
+                    <div className="stat-bar-noise" />
+                  ) : (
+                    <div
+                      className={`stat-bar-fill ${status?.reachable && status.cpu_temp != null ? statClass(status.cpu_temp, 60, 75) : "stat-empty"}`}
+                      style={{ width: status?.reachable && status.cpu_temp != null ? `${Math.min(status.cpu_temp, 100)}%` : "0%" }}
+                    />
                   )}
-                  {status.cpu_temp != null && (
-                    <div className="stat-row-bar">
-                      <div className="stat-row-header">
-                        <span className="field-label">CPU</span>
-                        <span className={`status-value ${statClass(status.cpu_temp, 60, 75)}`}>
-                          {status.cpu_temp.toFixed(1)}°C
-                        </span>
-                      </div>
-                      <div className="stat-bar">
-                        <div
-                          className={`stat-bar-fill ${statClass(status.cpu_temp, 60, 75)}`}
-                          style={{ width: `${Math.min(status.cpu_temp, 100)}%` }}
-                        />
-                      </div>
-                    </div>
+                </div>
+              </div>
+
+              {/* mem */}
+              <div className={`stat-row-bar stat-instrument${status?.reachable ? " stat-instrument-live" : ""}`} style={{ animationDelay: "0.28s" }}>
+                <div className="stat-row-header">
+                  <span className="field-label">MEM</span>
+                  <span className={`status-value ${status?.reachable && status.memory_used != null ? statClass(status.memory_used, 70, 85) : ""}`}>
+                    {status?.reachable && status.memory_used != null
+                      ? <>{status.memory_used.toFixed(0)}%<span className="text-secondary">of {status.memory_total}</span></>
+                      : <span className="stat-placeholder">---</span>}
+                  </span>
+                </div>
+                <div className="stat-bar">
+                  {probing ? (
+                    <div className="stat-bar-noise" />
+                  ) : (
+                    <div
+                      className={`stat-bar-fill ${status?.reachable && status.memory_used != null ? statClass(status.memory_used, 70, 85) : "stat-empty"}`}
+                      style={{ width: status?.reachable && status.memory_used != null ? `${Math.min(status.memory_used, 100)}%` : "0%" }}
+                    />
                   )}
-                  {status.memory_used != null && (
-                    <div className="stat-row-bar">
-                      <div className="stat-row-header">
-                        <span className="field-label">MEM</span>
-                        <span className={`status-value ${statClass(status.memory_used, 70, 85)}`}>
-                          {status.memory_used.toFixed(0)}%
-                          <span className="text-secondary">of {status.memory_total}</span>
-                        </span>
-                      </div>
-                      <div className="stat-bar">
-                        <div
-                          className={`stat-bar-fill ${statClass(status.memory_used, 70, 85)}`}
-                          style={{ width: `${Math.min(status.memory_used, 100)}%` }}
-                        />
-                      </div>
-                    </div>
+                </div>
+              </div>
+
+              {/* disk */}
+              <div className={`stat-row-bar stat-instrument${status?.reachable ? " stat-instrument-live" : ""}`} style={{ animationDelay: "0.35s" }}>
+                <div className="stat-row-header">
+                  <span className="field-label">DISK</span>
+                  <span className={`status-value ${status?.reachable && status.disk_used != null ? statClass(status.disk_used, 80, 90) : ""}`}>
+                    {status?.reachable && status.disk_used != null
+                      ? <>{status.disk_used.toFixed(0)}%<span className="text-secondary">of {status.disk_total}</span></>
+                      : <span className="stat-placeholder">---</span>}
+                  </span>
+                </div>
+                <div className="stat-bar">
+                  {probing ? (
+                    <div className="stat-bar-noise" />
+                  ) : (
+                    <div
+                      className={`stat-bar-fill ${status?.reachable && status.disk_used != null ? statClass(status.disk_used, 80, 90) : "stat-empty"}`}
+                      style={{ width: status?.reachable && status.disk_used != null ? `${Math.min(status.disk_used, 100)}%` : "0%" }}
+                    />
                   )}
-                  {status.disk_used != null && (
-                    <div className="stat-row-bar">
-                      <div className="stat-row-header">
-                        <span className="field-label">DISK</span>
-                        <span className={`status-value ${statClass(status.disk_used, 80, 90)}`}>
-                          {status.disk_used.toFixed(0)}%
-                          <span className="text-secondary">of {status.disk_total}</span>
-                        </span>
-                      </div>
-                      <div className="stat-bar">
-                        <div
-                          className={`stat-bar-fill ${statClass(status.disk_used, 80, 90)}`}
-                          style={{ width: `${Math.min(status.disk_used, 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -599,6 +624,7 @@ export default function ConnectionScreen({ onConnected }: Props) {
             last session: {formatTimestamp(form.last_connected)}
           </div>
         )}
+      </div>
       </div>
     </div>
   );
