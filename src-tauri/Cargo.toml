@@ -1,6 +1,6 @@
 [package]
 name = "kurolink"
-version = "0.3.1"
+version = "0.4.0"
 description = "SSH client that looks like a mecha command console"
 authors = ["Miyo Kanemitsu"]
 license = "Apache-2.0"
@@ -22,7 +22,7 @@ tauri = { version = "2", features = [] }
 tauri-plugin-shell = "2"
 # ring backend required: aws-lc-sys needs NASM/CMake on Windows which complicates builds
 russh = { version = "0.58", default-features = false, features = ["ring", "flate2"] }
-tokio = { version = "1", features = ["sync", "macros", "time"] }
+tokio = { version = "1", features = ["sync", "macros", "time", "net"] }
 uuid = { version = "1", features = ["v4"] }
 log = "0.4"
 # already compiled via russh, just making it directly available for passphrase encryption

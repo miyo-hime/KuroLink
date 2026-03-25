@@ -3,7 +3,7 @@ use std::time::Instant;
 use tauri::{AppHandle, State};
 
 use crate::config::ConnectionProfile;
-use crate::ssh::{self, ChannelInput, SshSession};
+use crate::ssh::{self, AgentIdentityInfo, ChannelInput, SshSession};
 use crate::state::{ActiveChannel, ActiveSession, AppState, ChannelKind};
 
 // types
@@ -91,6 +91,29 @@ pub async fn decrypt_profile_passphrase(
     crate::config::decrypt_passphrase(&app, &encrypted)
 }
 
+// agent
+
+#[tauri::command]
+pub async fn detect_agent() -> Result<bool, String> {
+    // spawn_blocking because AgentClient's futures aren't provably Send
+    let rt = tokio::runtime::Handle::current();
+    tokio::task::spawn_blocking(move || {
+        rt.block_on(async { ssh::connect_agent().await.map(|_| true) })
+    })
+    .await
+    .map_err(|e| format!("agent detect failed: {e}"))?
+}
+
+#[tauri::command]
+pub async fn list_agent_identities() -> Result<Vec<AgentIdentityInfo>, String> {
+    let rt = tokio::runtime::Handle::current();
+    tokio::task::spawn_blocking(move || {
+        rt.block_on(ssh::list_agent_keys())
+    })
+    .await
+    .map_err(|e| format!("agent list failed: {e}"))?
+}
+
 // connection
 
 #[tauri::command]
@@ -100,8 +123,10 @@ pub async fn probe_host(
     username: String,
     key_path: String,
     passphrase: Option<String>,
+    auth_mode: Option<String>,
 ) -> Result<HostStatus, String> {
-    let result = probe_host_inner(&host, port, &username, &key_path, passphrase.as_deref()).await;
+    let use_agent = auth_mode.as_deref() == Some("agent");
+    let result = probe_host_inner(host, port, username, key_path, passphrase, use_agent).await;
     match result {
         Ok(status) => Ok(status),
         Err(_) => Ok(HostStatus {
@@ -118,13 +143,18 @@ pub async fn probe_host(
 }
 
 async fn probe_host_inner(
-    host: &str,
+    host: String,
     port: u16,
-    username: &str,
-    key_path: &str,
-    passphrase: Option<&str>,
+    username: String,
+    key_path: String,
+    passphrase: Option<String>,
+    use_agent: bool,
 ) -> Result<HostStatus, String> {
-    let mut session = SshSession::connect(host, port, username, key_path, passphrase).await?;
+    let mut session = if use_agent {
+        SshSession::connect_with_agent(&host, port, &username).await?
+    } else {
+        SshSession::connect(&host, port, &username, &key_path, passphrase).await?
+    };
 
     let latency = session.ping().await?;
 
@@ -174,8 +204,14 @@ pub async fn connect_ssh(
     username: String,
     key_path: String,
     passphrase: Option<String>,
+    auth_mode: Option<String>,
 ) -> Result<String, String> {
-    let session = SshSession::connect(&host, port, &username, &key_path, passphrase.as_deref()).await?;
+    let use_agent = auth_mode.as_deref() == Some("agent");
+    let session = if use_agent {
+        SshSession::connect_with_agent(&host, port, &username).await?
+    } else {
+        SshSession::connect(&host, port, &username, &key_path, passphrase).await?
+    };
     let session_id = uuid::Uuid::new_v4().to_string();
 
     // Update last_connected on the profile

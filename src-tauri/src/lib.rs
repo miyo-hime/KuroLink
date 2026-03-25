@@ -17,6 +17,8 @@ pub fn run() {
             commands::get_last_profile,
             commands::encrypt_profile_passphrase,
             commands::decrypt_profile_passphrase,
+            commands::detect_agent,
+            commands::list_agent_identities,
             commands::probe_host,
             commands::connect_ssh,
             commands::disconnect_ssh,

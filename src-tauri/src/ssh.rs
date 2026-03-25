@@ -1,7 +1,9 @@
 use russh::client;
+use russh::keys::agent::client::{AgentClient, AgentStream};
 use russh::keys::{load_secret_key, PrivateKeyWithHashAlg};
 use russh::{Channel, ChannelMsg, Disconnect};
 use russh::keys::ssh_key::PublicKey;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
@@ -88,6 +90,57 @@ impl client::Handler for SshHandler {
     }
 }
 
+// agent
+
+type DynAgent = AgentClient<Box<dyn AgentStream + Send + Unpin + 'static>>;
+
+/// connect to whatever SSH agent is available on this platform.
+/// windows: openssh named pipe first, then pageant.
+/// linux/mac: SSH_AUTH_SOCK.
+pub async fn connect_agent() -> Result<DynAgent, String> {
+    #[cfg(windows)]
+    {
+        // try openssh agent first (modern windows default)
+        if let Ok(agent) = AgentClient::connect_named_pipe(r"\\.\pipe\openssh-ssh-agent").await {
+            return Ok(agent.dynamic());
+        }
+        // fall back to pageant
+        if let Ok(agent) = AgentClient::connect_pageant().await {
+            return Ok(agent.dynamic());
+        }
+        Err("no SSH agent found - start OpenSSH Authentication Agent service or Pageant".into())
+    }
+    #[cfg(not(windows))]
+    {
+        AgentClient::connect_env()
+            .await
+            .map(|a| a.dynamic())
+            .map_err(|e| format!("SSH agent not available: {e} - is ssh-agent running?"))
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct AgentIdentityInfo {
+    pub key_type: String,
+    pub fingerprint: String,
+    pub comment: String,
+}
+
+/// list keys from the running SSH agent
+pub async fn list_agent_keys() -> Result<Vec<AgentIdentityInfo>, String> {
+    let mut agent = connect_agent().await?;
+    let keys = agent.request_identities().await
+        .map_err(|e| format!("failed to list agent keys: {e}"))?;
+
+    Ok(keys.iter().map(|k| {
+        AgentIdentityInfo {
+            key_type: k.algorithm().to_string(),
+            fingerprint: k.fingerprint(Default::default()).to_string(),
+            comment: k.comment().to_string(),
+        }
+    }).collect())
+}
+
 // session
 
 pub struct SshSession {
@@ -100,7 +153,7 @@ impl SshSession {
         port: u16,
         username: &str,
         key_path: &str,
-        passphrase: Option<&str>,
+        passphrase: Option<String>,
     ) -> Result<Self, String> {
         // Expand ~ to home dir
         let expanded_path = if key_path.starts_with("~/") {
@@ -112,11 +165,12 @@ impl SshSession {
             key_path.to_string()
         };
 
-        let key = load_secret_key(&expanded_path, passphrase)
+        let pp_ref = passphrase.as_deref();
+        let key = load_secret_key(&expanded_path, pp_ref)
             .map_err(|e| {
                 let msg = format!("{e}");
                 let lower = msg.to_lowercase();
-                if passphrase.is_none()
+                if pp_ref.is_none()
                     && (lower.contains("encrypt")
                         || lower.contains("passphrase")
                         || lower.contains("decrypt"))
@@ -162,6 +216,73 @@ impl SshSession {
         }
 
         Ok(Self { handle })
+    }
+
+    /// connect using the system SSH agent. runs on a blocking thread because
+    /// russh's Signer trait returns impl Future without + Send, so the auth
+    /// future can't cross a tokio::spawn boundary. block_on with the current
+    /// runtime handle keeps everything on the same executor.
+    pub async fn connect_with_agent(
+        host: &str,
+        port: u16,
+        username: &str,
+    ) -> Result<Self, String> {
+        let host = host.to_owned();
+        let port = port;
+        let username = username.to_owned();
+        let rt = tokio::runtime::Handle::current();
+
+        tokio::task::spawn_blocking(move || {
+            rt.block_on(async move {
+                let mut agent = connect_agent().await?;
+                let keys = agent.request_identities().await
+                    .map_err(|e| format!("failed to list agent keys: {e}"))?;
+
+                if keys.is_empty() {
+                    return Err("no keys loaded in SSH agent".to_string());
+                }
+
+                let config = Arc::new(client::Config {
+                    inactivity_timeout: Some(std::time::Duration::from_secs(30)),
+                    keepalive_interval: Some(std::time::Duration::from_secs(15)),
+                    keepalive_max: 3,
+                    ..Default::default()
+                });
+
+                let known_hosts = crate::config::known_hosts_path()
+                    .unwrap_or_else(|_| PathBuf::from(".ssh/known_hosts"));
+                let handler = SshHandler {
+                    known_hosts_path: known_hosts,
+                    host: host.clone(),
+                };
+                let mut handle = client::connect(config, (&host[..], port), handler)
+                    .await
+                    .map_err(|e| format!("SSH connection failed: {e}"))?;
+
+                let best_hash = handle
+                    .best_supported_rsa_hash()
+                    .await
+                    .map_err(|e| format!("Failed to negotiate hash: {e}"))?
+                    .flatten();
+
+                let key_count = keys.len();
+                for key in keys {
+                    let result = handle
+                        .authenticate_publickey_with(&username, key, best_hash, &mut agent)
+                        .await;
+                    match result {
+                        Ok(r) if r.success() => return Ok(SshSession { handle }),
+                        _ => continue,
+                    }
+                }
+
+                Err(format!(
+                    "SSH agent auth rejected - none of the {key_count} keys were accepted"
+                ))
+            })
+        })
+        .await
+        .map_err(|e| format!("agent auth task failed: {e}"))?
     }
 
     pub async fn open_shell(

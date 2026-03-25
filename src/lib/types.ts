@@ -1,3 +1,5 @@
+export type AuthMode = "key_file" | "agent";
+
 export interface ConnectionProfile {
   id: string;
   name: string;
@@ -9,6 +11,13 @@ export interface ConnectionProfile {
   last_connected: string | null;
   has_passphrase: boolean;
   saved_passphrase: string | null;
+  auth_mode: AuthMode;
+}
+
+export interface AgentIdentityInfo {
+  key_type: string;
+  fingerprint: string;
+  comment: string;
 }
 
 export interface HostStatus {
