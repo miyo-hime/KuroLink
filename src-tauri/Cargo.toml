@@ -1,7 +1,7 @@
 [package]
 name = "kurolink"
-version = "0.2.1"
-description = "Remote access client for kurobox"
+version = "0.3.0"
+description = "SSH client that looks like a mecha command console"
 authors = ["Miyo Kanemitsu"]
 license = "Apache-2.0"
 repository = "https://github.com/miyo-hime/KuroLink"

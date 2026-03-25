@@ -1,5 +1,5 @@
 /* ============================================
-   TabBar — Subsystem Selector
+   tabbar
    ============================================ */
 
 .tab-bar {
@@ -32,7 +32,7 @@
   background: rgba(0, 212, 255, 0.03);
 }
 
-/* Hover sweep effect */
+/* hover sweep */
 .tab::after {
   content: "";
   position: absolute;
@@ -53,7 +53,7 @@
   background: var(--bg-terminal);
 }
 
-/* Active tab left accent pip */
+/* active tab pip */
 .tab-active::before {
   content: "";
   position: absolute;
@@ -65,7 +65,7 @@
   box-shadow: var(--glow-sm) var(--accent-primary);
 }
 
-/* Active tab bottom glow replaces sweep */
+/* active tab glow */
 .tab-active::after {
   width: 100%;
   background: var(--accent-primary);

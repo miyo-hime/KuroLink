@@ -13,7 +13,7 @@
   background: var(--bg-terminal);
 }
 
-/* ---- Link Lost Overlay ---- */
+/* ---- link lost ---- */
 
 .link-lost-overlay {
   position: absolute;
@@ -121,7 +121,7 @@
   to { opacity: 1; }
 }
 
-/* ---- DE Placeholder ---- */
+/* ---- de placeholder ---- */
 
 .de-placeholder {
   display: flex;

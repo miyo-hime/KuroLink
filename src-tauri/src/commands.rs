@@ -5,7 +5,7 @@ use crate::config::ConnectionProfile;
 use crate::ssh::{self, ChannelInput, SshSession};
 use crate::state::{ActiveChannel, ActiveSession, AppState, ChannelKind};
 
-// -- Types --
+// types
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct HostStatus {
@@ -31,7 +31,7 @@ pub struct SystemStats {
     pub net_tx_bytes: u64,
 }
 
-// -- Config Commands --
+// config
 
 #[tauri::command]
 pub async fn get_profiles(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<ConnectionProfile>, String> {
@@ -71,7 +71,7 @@ pub async fn get_last_profile(app: AppHandle, state: State<'_, AppState>) -> Res
     Ok(profile)
 }
 
-// -- Connection Commands --
+// connection
 
 #[tauri::command]
 pub async fn probe_host(
@@ -183,7 +183,7 @@ pub async fn disconnect_ssh(
 ) -> Result<(), String> {
     let mut sessions = state.sessions.lock().await;
     if let Some(mut session) = sessions.remove(&session_id) {
-        // Close all channels (match will expand when Vnc variant is added)
+        // close all channels
         for (_, channel) in session.channels.drain() {
             match channel.kind {
                 ChannelKind::Shell { input_tx } => {
@@ -196,7 +196,7 @@ pub async fn disconnect_ssh(
     Ok(())
 }
 
-// -- Terminal Commands --
+// terminal
 
 #[tauri::command]
 pub async fn open_shell(
@@ -313,7 +313,7 @@ pub async fn ping_session(
     session.ssh.ping().await
 }
 
-// -- System Stats --
+// stats
 
 #[tauri::command]
 pub async fn fetch_system_stats(
@@ -402,7 +402,7 @@ pub async fn fetch_system_stats(
     })
 }
 
-// -- Helpers --
+// helpers
 
 fn parse_memory(output: &str) -> (Option<f32>, Option<String>) {
     let parts: Vec<&str> = output.trim().split_whitespace().collect();
