@@ -7,6 +7,8 @@ import {
   deleteProfile,
   probeHost,
   connectSsh,
+  encryptPassphrase,
+  decryptPassphrase,
 } from "../lib/ipc";
 import KuroLinkLogo from "./KuroLinkLogo";
 import "./ConnectionScreen.css";
@@ -35,6 +37,8 @@ const DEFAULT_PROFILE: Omit<ConnectionProfile, "id" | "created_at"> = {
   username: "",
   key_path: "~/.ssh/id_ed25519",
   last_connected: null,
+  has_passphrase: false,
+  saved_passphrase: null,
 };
 
 function statClass(value: number, cautionAt: number, criticalAt: number): string {
@@ -53,6 +57,7 @@ export default function ConnectionScreen({ onConnected }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [passphrasePrompt, setPassphrasePrompt] = useState(false);
   const [passphrase, setPassphrase] = useState("");
+  const [savePass, setSavePass] = useState(false);
 
   // Load profiles on mount, auto-probe last profile
   useEffect(() => {
@@ -71,13 +76,29 @@ export default function ConnectionScreen({ onConnected }: Props) {
             username: last.username,
             key_path: last.key_path,
             last_connected: last.last_connected,
+            has_passphrase: last.has_passphrase ?? false,
+            saved_passphrase: last.saved_passphrase ?? null,
           });
+          if (last.saved_passphrase) {
+            setSavePass(true);
+            // decrypt so we have it ready for probe/connect
+            try {
+              const pp = await decryptPassphrase(last.saved_passphrase);
+              setPassphrase(pp);
+            } catch {
+              // corrupted or wrong key, they'll need to re-enter
+            }
+          }
 
-          // Auto-probe if we have enough info
+          // auto-probe if we have enough info
           if (last.host && last.username && last.key_path) {
             setProbing(true);
             try {
-              const result = await probeHost(last.host, last.port, last.username, last.key_path);
+              let pp: string | null = null;
+              if (last.has_passphrase && last.saved_passphrase) {
+                pp = await decryptPassphrase(last.saved_passphrase).catch(() => null);
+              }
+              const result = await probeHost(last.host, last.port, last.username, last.key_path, pp);
               setStatus(result);
             } catch {
               // whatever, they can probe manually
@@ -97,11 +118,13 @@ export default function ConnectionScreen({ onConnected }: Props) {
     setProbing(true);
     setError(null);
     try {
+      const pp = form.has_passphrase ? passphrase || null : null;
       const result = await probeHost(
         form.host,
         form.port,
         form.username,
         form.key_path,
+        pp,
       );
       setStatus(result);
     } catch (e) {
@@ -110,7 +133,7 @@ export default function ConnectionScreen({ onConnected }: Props) {
     } finally {
       setProbing(false);
     }
-  }, [form]);
+  }, [form, passphrase]);
 
   const doConnect = async (pp: string | null) => {
     setConnecting(true);
@@ -118,6 +141,13 @@ export default function ConnectionScreen({ onConnected }: Props) {
     try {
       const profileId = selectedId || crypto.randomUUID();
       const now = new Date().toISOString();
+
+      // encrypt passphrase if user opted to save it
+      let savedPassphrase: string | null = null;
+      if (form.has_passphrase && savePass && pp) {
+        savedPassphrase = await encryptPassphrase(pp);
+      }
+
       const profile: ConnectionProfile = {
         id: profileId,
         name: form.name,
@@ -127,6 +157,8 @@ export default function ConnectionScreen({ onConnected }: Props) {
         key_path: form.key_path,
         created_at: now,
         last_connected: now,
+        has_passphrase: form.has_passphrase,
+        saved_passphrase: savedPassphrase,
       };
       await saveProfile(profile);
 
@@ -142,7 +174,12 @@ export default function ConnectionScreen({ onConnected }: Props) {
     } catch (e) {
       const msg = String(e);
       if (msg.includes("ENCRYPTED_KEY")) {
+        // key is encrypted but we didn't have a passphrase
         setConnecting(false);
+        if (!form.has_passphrase) {
+          // auto-enable the checkbox since we now know the key needs one
+          setForm((prev) => ({ ...prev, has_passphrase: true }));
+        }
         setPassphrasePrompt(true);
         setPassphrase("");
       } else {
@@ -152,7 +189,10 @@ export default function ConnectionScreen({ onConnected }: Props) {
     }
   };
 
-  const handleConnect = () => doConnect(null);
+  const handleConnect = () => {
+    const pp = form.has_passphrase ? passphrase || null : null;
+    doConnect(pp);
+  };
 
   const handlePassphraseSubmit = () => {
     setPassphrasePrompt(false);
@@ -183,7 +223,7 @@ export default function ConnectionScreen({ onConnected }: Props) {
                 <div className="profile-selector-row">
                 <select
                   value={selectedId || ""}
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const p = profiles.find((p) => p.id === e.target.value);
                     if (p) {
                       setSelectedId(p.id);
@@ -194,10 +234,22 @@ export default function ConnectionScreen({ onConnected }: Props) {
                         username: p.username,
                         key_path: p.key_path,
                         last_connected: p.last_connected,
+                        has_passphrase: p.has_passphrase ?? false,
+                        saved_passphrase: p.saved_passphrase ?? null,
                       });
+                      setSavePass(!!p.saved_passphrase);
+                      if (p.saved_passphrase) {
+                        try {
+                          setPassphrase(await decryptPassphrase(p.saved_passphrase));
+                        } catch { setPassphrase(""); }
+                      } else {
+                        setPassphrase("");
+                      }
                     } else {
                       setSelectedId(null);
                       setForm({ ...DEFAULT_PROFILE });
+                      setPassphrase("");
+                      setSavePass(false);
                     }
                     setStatus(null);
                   }}
@@ -277,6 +329,47 @@ export default function ConnectionScreen({ onConnected }: Props) {
                   placeholder="~/.ssh/id_ed25519"
                 />
               </div>
+              <div className="form-row form-row-checkbox">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={form.has_passphrase}
+                    onChange={(e) => {
+                      setForm({ ...form, has_passphrase: e.target.checked });
+                      if (!e.target.checked) {
+                        setPassphrase("");
+                        setSavePass(false);
+                      }
+                    }}
+                  />
+                  <span className="toggle-track" />
+                  <span className="toggle-label-text">KEY PASSPHRASE</span>
+                </label>
+              </div>
+              {form.has_passphrase && (
+                <>
+                  <div className="form-row">
+                    <label className="field-label">PASS</label>
+                    <input
+                      type="password"
+                      value={passphrase}
+                      onChange={(e) => setPassphrase(e.target.value)}
+                      placeholder="key passphrase"
+                    />
+                  </div>
+                  <div className="form-row form-row-checkbox">
+                    <label className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={savePass}
+                        onChange={(e) => setSavePass(e.target.checked)}
+                      />
+                      <span className="toggle-track" />
+                      <span className="toggle-label-text">SAVE ENCRYPTED</span>
+                    </label>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* status */}
