@@ -227,10 +227,14 @@ export default function TerminalPanel({ sessionId, channelId, active, searchVisi
 
   // re-fit on tab switch
   useEffect(() => {
-    if (active && fitRef.current && termRef.current) {
-      fitRef.current.fit();
-      termRef.current.focus();
-    }
+    if (!active) return;
+
+    const frame = requestAnimationFrame(() => {
+      fitRef.current?.fit();
+      termRef.current?.focus();
+    });
+
+    return () => cancelAnimationFrame(frame);
   }, [active]);
 
   // auto-focus search input when it appears, clear when it closes
@@ -259,7 +263,7 @@ export default function TerminalPanel({ sessionId, channelId, active, searchVisi
   };
 
   return (
-    <div className={`terminal-wrapper ${active ? "" : "terminal-hidden"} ${bellFlash ? "terminal-bell" : ""}`}>
+    <div className={`terminal-wrapper ${active ? "terminal-active" : "terminal-hidden"} ${bellFlash ? "terminal-bell" : ""}`}>
       {searchVisible && (
         <div className="terminal-search-bar">
           <span className="terminal-search-label">find</span>

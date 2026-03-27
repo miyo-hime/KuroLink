@@ -9,6 +9,14 @@
   overflow: hidden;
 }
 
+.terminal-active {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  position: relative;
+  z-index: 1;
+}
+
 .terminal-inner {
   width: 100%;
   height: 100%;
@@ -21,7 +29,11 @@
 }
 
 .terminal-hidden {
-  display: none;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
 }
 
 /* top edge glow */
