@@ -1,5 +1,6 @@
 mod commands;
 mod config;
+mod local;
 mod ssh;
 mod state;
 
@@ -25,11 +26,16 @@ pub fn run() {
             commands::connect_ssh,
             commands::disconnect_ssh,
             commands::open_shell,
+            commands::open_ssh_shell,
+            commands::open_local_shell,
             commands::close_shell,
             commands::write_to_shell,
             commands::resize_shell,
             commands::ping_session,
             commands::fetch_system_stats,
+            commands::fetch_local_stats,
+            commands::get_active_sessions,
+            commands::get_launch_path,
         ])
         .setup(|app| {
             // restore window state from our portable config
@@ -58,9 +64,6 @@ pub fn run() {
                 let maximized = window.is_maximized().unwrap_or(false);
                 // grab position/size from before maximize so we restore to the right spot
                 let (x, y, width, height) = if maximized {
-                    // when maximized, the current pos/size is the maximized one -
-                    // not super useful, but better than nothing. on next launch
-                    // we'll restore maximized anyway
                     let pos = window.outer_position().unwrap_or_default();
                     let size = window.outer_size().unwrap_or_default();
                     (pos.x, pos.y, size.width, size.height)

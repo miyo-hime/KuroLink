@@ -10,7 +10,6 @@ import { writeToShell, resizeShell, onTerminalOutput, onTerminalClosed } from ".
 import "./TerminalPanel.css";
 
 interface Props {
-  sessionId: string;
   channelId: string;
   active: boolean;
   searchVisible: boolean;
@@ -47,7 +46,7 @@ const TERMINAL_THEME = {
   brightWhite: "#ffffff",
 };
 
-export default function TerminalPanel({ sessionId, channelId, active, searchVisible, onSearchToggle, onClosed, onTitleChange }: Props) {
+export default function TerminalPanel({ channelId, active, searchVisible, onSearchToggle, onClosed, onTitleChange }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -105,6 +104,11 @@ export default function TerminalPanel({ sessionId, channelId, active, searchVisi
     term.attachCustomKeyEventHandler((ev: KeyboardEvent) => {
       if (ev.type !== "keydown") return true;
 
+      // let global shortcuts bubble through to useKeyboardShortcuts
+      if (ev.ctrlKey && ev.key === "Tab") return false;
+      if (ev.ctrlKey && !ev.shiftKey && ev.code.match(/^Digit[1-9]$/)) return false;
+      if (ev.ctrlKey && ev.shiftKey && (ev.code === "KeyW" || ev.code === "KeyT")) return false;
+
       // ctrl+shift combos
       if (ev.ctrlKey && ev.shiftKey) {
         if (ev.code === "KeyC") {
@@ -114,7 +118,7 @@ export default function TerminalPanel({ sessionId, channelId, active, searchVisi
         }
         if (ev.code === "KeyV") {
           navigator.clipboard.readText().then((text) => {
-            if (text) writeToShell(sessionId, channelId, text).catch(() => {});
+            if (text) writeToShell(channelId, text).catch(() => {});
           });
           return false;
         }
@@ -140,13 +144,6 @@ export default function TerminalPanel({ sessionId, channelId, active, searchVisi
           fitAddon.fit();
           return false;
         }
-        if (ev.code === "Digit0") {
-          ev.preventDefault();
-          fontSizeRef.current = DEFAULT_FONT_SIZE;
-          term.options.fontSize = DEFAULT_FONT_SIZE;
-          fitAddon.fit();
-          return false;
-        }
       }
 
       return true;
@@ -154,13 +151,13 @@ export default function TerminalPanel({ sessionId, channelId, active, searchVisi
 
     // keystrokes -> ssh
     const onDataDisposable = term.onData((data) => {
-      writeToShell(sessionId, channelId, data).catch(() => {});
+      writeToShell(channelId, data).catch(() => {});
     });
 
     // resize -> pty resize (must be registered BEFORE first fit()
     // so the initial size actually reaches the PTY)
     const onResizeDisposable = term.onResize(({ cols, rows }) => {
-      resizeShell(sessionId, channelId, cols, rows).catch(() => {});
+      resizeShell(channelId, cols, rows).catch(() => {});
     });
 
     // osc title changes -> tab title
@@ -206,7 +203,7 @@ export default function TerminalPanel({ sessionId, channelId, active, searchVisi
     const onContextMenu = (e: MouseEvent) => {
       e.preventDefault();
       navigator.clipboard.readText().then((text) => {
-        if (text) writeToShell(sessionId, channelId, text).catch(() => {});
+        if (text) writeToShell(channelId, text).catch(() => {});
       });
     };
     el.addEventListener("contextmenu", onContextMenu);
@@ -223,7 +220,7 @@ export default function TerminalPanel({ sessionId, channelId, active, searchVisi
       unlistenClosed?.();
       term.dispose();
     };
-  }, [sessionId, channelId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [channelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // re-fit on tab switch
   useEffect(() => {

@@ -8,8 +8,8 @@ type AppView = "connect" | "terminal";
 
 function App() {
   const [view, setView] = useState<AppView>("connect");
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [profile, setProfile] = useState<ConnectionProfile | null>(null);
+  const [initialSessionId, setInitialSessionId] = useState<string | null>(null);
+  const [initialProfile, setInitialProfile] = useState<ConnectionProfile | null>(null);
   const [glitching, setGlitching] = useState(false);
   const glitchRef = useRef<HTMLDivElement>(null);
 
@@ -18,8 +18,8 @@ function App() {
     _pid: string,
     prof: ConnectionProfile,
   ) => {
-    setSessionId(sid);
-    setProfile(prof);
+    setInitialSessionId(sid);
+    setInitialProfile(prof);
     setView("terminal");
   };
 
@@ -27,14 +27,10 @@ function App() {
     setGlitching(true);
     setTimeout(() => {
       setGlitching(false);
-      setSessionId(null);
-      setProfile(null);
+      setInitialSessionId(null);
+      setInitialProfile(null);
       setView("connect");
     }, 400);
-  }, []);
-
-  const handleSessionReconnected = useCallback((newSessionId: string) => {
-    setSessionId(newSessionId);
   }, []);
 
   return (
@@ -42,13 +38,12 @@ function App() {
       {view === "connect" && (
         <ConnectionScreen onConnected={handleConnected} />
       )}
-      {view === "terminal" && sessionId && profile && (
+      {view === "terminal" && initialSessionId && initialProfile && (
         <div ref={glitchRef} className={glitching ? "view-glitch-out" : ""} style={{ height: "100%", width: "100%" }}>
           <MainView
-            sessionId={sessionId}
-            profile={profile}
+            initialSessionId={initialSessionId}
+            initialProfile={initialProfile}
             onDisconnected={handleDisconnected}
-            onSessionReconnected={handleSessionReconnected}
           />
         </div>
       )}

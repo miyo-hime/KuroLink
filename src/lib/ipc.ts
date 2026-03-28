@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ConnectionProfile, HostStatus, SystemStats, AgentIdentityInfo } from "./types";
+import type { ConnectionProfile, HostStatus, SystemStats, AgentIdentityInfo, OpenSshShellResult, SessionInfo } from "./types";
 
 // -- Config --
 
@@ -64,32 +64,47 @@ export const connectSsh = (
 export const disconnectSsh = (sessionId: string) =>
   invoke<void>("disconnect_ssh", { sessionId });
 
-// -- Terminal --
+// -- Terminal: shell open/close --
 
+// open a shell on an existing ssh session (used by initial connection flow)
 export const openShell = (sessionId: string, cols: number, rows: number) =>
   invoke<string>("open_shell", { sessionId, cols, rows });
 
-export const closeShell = (sessionId: string, channelId: string) =>
-  invoke<void>("close_shell", { sessionId, channelId });
+// connect-or-reuse + open shell in one call (used by tab dropdown)
+export const openSshShell = (profileId: string, cols: number, rows: number, passphrase?: string | null) =>
+  invoke<OpenSshShellResult>("open_ssh_shell", { profileId, cols, rows, passphrase: passphrase ?? null });
 
-export const writeToShell = (
-  sessionId: string,
-  channelId: string,
-  data: string,
-) => invoke<void>("write_to_shell", { sessionId, channelId, data });
+// spawn a local terminal (powershell, cmd, wsl)
+export const openLocalShell = (shellType: string, cols: number, rows: number, cwd?: string | null) =>
+  invoke<string>("open_local_shell", { shellType, cols, rows, cwd: cwd ?? null });
 
-export const resizeShell = (
-  sessionId: string,
-  channelId: string,
-  cols: number,
-  rows: number,
-) => invoke<void>("resize_shell", { sessionId, channelId, cols, rows });
+// -- Terminal: IO (backend-agnostic, just need channelId) --
+
+export const closeShell = (channelId: string) =>
+  invoke<void>("close_shell", { channelId });
+
+export const writeToShell = (channelId: string, data: string) =>
+  invoke<void>("write_to_shell", { channelId, data });
+
+export const resizeShell = (channelId: string, cols: number, rows: number) =>
+  invoke<void>("resize_shell", { channelId, cols, rows });
+
+// -- Session --
 
 export const pingSession = (sessionId: string) =>
   invoke<number>("ping_session", { sessionId });
 
 export const fetchSystemStats = (sessionId: string) =>
   invoke<SystemStats>("fetch_system_stats", { sessionId });
+
+export const fetchLocalStats = () =>
+  invoke<SystemStats>("fetch_local_stats");
+
+export const getActiveSessions = () =>
+  invoke<SessionInfo[]>("get_active_sessions");
+
+export const getLaunchPath = () =>
+  invoke<string | null>("get_launch_path");
 
 // -- Event Listeners --
 
