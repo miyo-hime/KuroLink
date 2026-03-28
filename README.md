@@ -1,25 +1,39 @@
 # KuroLink
 
-SSH client that doesn't suck (I hope). Built with Tauri 2.
+Terminal emulator for people who think Windows Terminal is fine but wish it looked like a mecha command console. Built with Tauri 2.
 
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 
 ## what is this
 
-A desktop SSH client that looks like a mecha command console. Connect to your servers, get a terminal, see system stats. That's it.
+A terminal app. Local shells, SSH connection profiles, live system stats, tabs you can drag around. The UI looks like NERV headquarters because I wanted it to.
 
-- **xterm.js** terminal with WebGL rendering, PuTTY-style clipboard (select to copy, right-click to paste), clickable URLs, search, font zoom
-- **Multi-tab** terminals on a single SSH connection
-- **Live system stats** - CPU temp, memory, disk, network
-- **Connection profiles** - save your servers, auto-probe on launch, delete the ones you regret
-- **SSH agent support** - use your system SSH agent (OpenSSH on Windows, Pageant fallback) or specify a key file. agent mode is default
-- **Encrypted key passphrase** - opt-in "save encrypted" so you don't retype it every session (AES-256-GCM, tied to install)
-- **Host key verification** - TOFU model, checks `~/.ssh/known_hosts`, yells at you if the key changes
-- **Connection drop detection** - knows when your SSH dies and tells you about it instead of sitting there like nothing happened
-- **Portable** -single `.exe`, config saves next to it, no installer
-- **~15MB binary** because Tauri exists
+**local terminals:**
+- PowerShell, CMD, WSL - launch from the connection screen or open new tabs on the fly
 
-The whole UI looks like NERV headquarters. This is a feature.
+**SSH:**
+- connect to remote servers with saved profiles, get a terminal
+- SSH agent support (OpenSSH on Windows, Pageant fallback) - agent mode is default
+- key file auth with optional encrypted passphrase storage (AES-256-GCM, tied to install)
+- host key verification (TOFU, checks `~/.ssh/known_hosts`, yells at you if the key changes)
+- connection drop detection - knows when your link dies instead of sitting there pretending everything is fine
+
+**terminal:**
+- xterm.js with WebGL rendering
+- PuTTY-style clipboard (select to copy, right-click to paste), clickable URLs, search, font zoom, 10k scrollback
+- multi-tab with drag reorder, dropdown menu, context menus, middle-click to close
+- keyboard shortcuts: `Ctrl+Tab`/`Ctrl+Shift+Tab` (cycle), `Ctrl+1-9` (jump), `Ctrl+Shift+W` (close), `Ctrl+Shift+T` (reopen)
+
+**stats:**
+- local tabs show local system stats (CPU, memory, disk) via sysinfo
+- SSH tabs show remote stats (CPU temp, memory, disk, network) pulled over the connection
+- same UI either way, it just knows which machine to ask
+
+**misc:**
+- portable - single `.exe`, config saves next to it, no installer
+- ~15MB binary because Tauri exists
+- window state persistence (size, position, maximized)
+- connection profiles auto-save
 
 ## download
 
@@ -29,26 +43,28 @@ Config saves as `kurolink.json` next to the exe. Move the folder wherever you wa
 
 ## usage
 
-1. Run KuroLink.exe
-2. Fill in your server details (host, port, username, SSH key path)
-3. Hit CONNECT · CLI
-4. You have a terminal now
+Run it. You get a connection screen. From there you can:
 
-Profiles auto-save. The app remembers your last connection and auto-probes it on launch. SSH agent is the default auth mode - if you have keys loaded in your system agent, it just works. Toggle to key file mode if you'd rather point at a specific key. SSH key auth only - no password login.
+- **open a local shell** - hit PowerShell, CMD, or WSL in the LOCAL panel
+- **connect to a server** - fill in host/port/username, pick your auth mode, hit CONNECT
 
-## host requirements
+Once you're in, the `+` button clones whatever your current tab is. The dropdown arrow next to it gives you the full menu - local shells and saved SSH profiles. Mix and match. Each tab is independent.
 
-The live stats (CPU temp, memory, disk, network) are pulled by running standard Linux commands over SSH. Your target machine needs:
+Profiles auto-save. The app remembers your last connection and auto-probes it on launch. SSH agent is the default auth mode - if you have keys loaded in your system agent, it just works.
 
-- `free`, `df`, `awk`, `uptime` -if you're running any normal Linux distro these are already there. if they're not, something has gone wrong and you have bigger problems than KuroLink
-- `/sys/class/thermal/thermal_zone*/temp` -CPU temperature. auto-detects the `cpu-thermal` zone now (I finally fixed the hardcode). if your device doesn't have a thermal zone at all, CPU temp just won't show up. it's fine
-- network interface -auto-detected via `ip route show default`. works on eth0, wlan0, whatever your default route uses. the 4am `eth0` hardcode is gone, you're welcome
+## host requirements (SSH only)
 
-tl;dr if it's a Raspberry Pi running Raspberry Pi OS, everything just works. if it's something else, most things will work and the rest will gracefully not show up.
+The live stats on remote connections are pulled by running standard Linux commands over SSH. Your target machine needs:
+
+- `free`, `df`, `awk`, `uptime` - if you're running any normal Linux distro these are already there
+- `/sys/class/thermal/thermal_zone*/temp` - CPU temperature. auto-detects the right zone. if your device doesn't have one, it just won't show up
+- network interface auto-detected via `ip route show default`
+
+tl;dr if it's a Raspberry Pi running Raspberry Pi OS, everything just works. if it's something else, most things will work and the rest will gracefully not show up. local shells don't need any of this obviously.
 
 ## building from source
 
-Most people should just download the release. If you want to build it yourself, you already know what you're doing, but:
+Most people should just download the release. If you want to build it yourself:
 
 - Node.js 18+, Rust stable, Visual Studio Build Tools (C++ workload)
 - `npm install && npx tauri build`
@@ -58,19 +74,17 @@ Most people should just download the release. If you want to build it yourself, 
 
 ## roadmap
 
+- [x] Local shells (PowerShell, CMD, WSL)
 - [x] SSH terminal with multi-tab
-- [x] Connection profiles
-- [x] Live system stats
+- [x] Independent tabs with drag reorder, dropdown, keyboard shortcuts
+- [x] Connection profiles with SSH agent support
+- [x] Live system stats (local + remote)
 - [x] NERV/Gundam command console aesthetic
-- [x] Host key verification (TOFU)
-- [x] Connection drop detection + reconnect
-- [x] Auto-detect network interface and thermal zone (no more hardcodes at 4am)
-- [x] SSH agent support (OpenSSH + Pageant)
-- [x] Encrypted passphrase storage
-- [x] Terminal QoL (clipboard, search, clickable URLs, font zoom, 10k scrollback)
+- [x] Host key verification, connection drop detection, encrypted passphrase storage
+- [ ] SFTP file browser / transfers
+- [ ] Custom window chrome (the titlebar deserves the mecha treatment too)
 - [ ] VNC desktop mode (noVNC embedded) - the plumbing is there, the pixels are not
-- [ ] File browser / SCP transfers
-- [ ] WireGuard tunnel management
+- [ ] Split panes, session restore, command palette
 
 ## license
 
