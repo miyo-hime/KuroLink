@@ -43,9 +43,27 @@ export interface SystemStats {
   latency_ms: number;
 }
 
+// tab backends - ssh or local, frontend doesn't care which for terminal IO
+export type TabBackend =
+  | { kind: "ssh"; sessionId: string; profileId: string; profileName: string }
+  | { kind: "local"; shellType: "powershell" | "cmd" | "wsl" };
+
 export interface TerminalTab {
   channelId: string;
   title: string;
+  backend: TabBackend;
+}
+
+export interface SessionInfo {
+  session_id: string;
+  profile_id: string;
+  profile_name: string;
+  channel_count: number;
+}
+
+export interface OpenSshShellResult {
+  channel_id: string;
+  session_id: string;
 }
 
 export type ConnectionStatus = "connected" | "degraded" | "lost";

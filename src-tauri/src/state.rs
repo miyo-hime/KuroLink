@@ -4,35 +4,67 @@ use tokio::sync::{mpsc, Mutex};
 use crate::config::AppConfig;
 use crate::ssh::{ChannelInput, SshSession};
 
-pub enum ChannelKind {
-    Shell {
+// channels are the universal unit - ssh and local shells use the same interface
+pub enum ChannelBackend {
+    Ssh {
+        session_id: String,
         input_tx: mpsc::Sender<ChannelInput>,
     },
-    // phase 2: Vnc { ... }
+    Local {
+        input_tx: mpsc::Sender<ChannelInput>,
+    },
 }
 
 pub struct ActiveChannel {
     pub channel_id: String,
-    pub kind: ChannelKind,
+    pub backend: ChannelBackend,
 }
 
-pub struct ActiveSession {
+impl ActiveChannel {
+    /// get the input sender regardless of backend type
+    pub fn input_tx(&self) -> &mpsc::Sender<ChannelInput> {
+        match &self.backend {
+            ChannelBackend::Ssh { input_tx, .. } => input_tx,
+            ChannelBackend::Local { input_tx } => input_tx,
+        }
+    }
+
+    /// get the session_id if this is an ssh channel
+    pub fn session_id(&self) -> Option<&str> {
+        match &self.backend {
+            ChannelBackend::Ssh { session_id, .. } => Some(session_id),
+            ChannelBackend::Local { .. } => None,
+        }
+    }
+}
+
+// ssh sessions live separately, tracked by channel count
+pub struct SshSessionEntry {
     pub session_id: String,
     pub profile_id: String,
     pub ssh: SshSession,
-    pub channels: HashMap<String, ActiveChannel>,
+    pub channel_count: usize,
 }
 
 pub struct AppState {
-    pub sessions: Mutex<HashMap<String, ActiveSession>>,
+    pub ssh_sessions: Mutex<HashMap<String, SshSessionEntry>>,
+    pub channels: Mutex<HashMap<String, ActiveChannel>>,
     pub config: Mutex<Option<AppConfig>>,
+    pub launch_path: Mutex<Option<String>>,
 }
 
 impl AppState {
     pub fn new() -> Self {
+        // check for --path arg
+        let launch_path = std::env::args()
+            .skip_while(|a| a != "--path")
+            .nth(1);
+
         Self {
-            sessions: Mutex::new(HashMap::new()),
+            ssh_sessions: Mutex::new(HashMap::new()),
+            channels: Mutex::new(HashMap::new()),
             config: Mutex::new(None),
+            launch_path: Mutex::new(launch_path),
         }
     }
 

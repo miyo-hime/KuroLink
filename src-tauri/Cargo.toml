@@ -1,6 +1,6 @@
 [package]
 name = "kurolink"
-version = "0.5.1"
+version = "0.6.0"
 description = "SSH client that looks like a mecha command console"
 authors = ["Miyo Kanemitsu"]
 license = "Apache-2.0"
@@ -28,6 +28,10 @@ log = "0.4"
 # already compiled via russh, just making it directly available for passphrase encryption
 ring = "0.17"
 base64 = "0.22"
+# local terminal PTY (powers wezterm, handles ConPTY on windows)
+portable-pty = "0.9"
+# local system stats (CPU, memory, disk) for when active tab is a local shell
+sysinfo = "0.33"
 
 [profile.release]
 panic = "abort"

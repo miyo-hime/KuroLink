@@ -3,8 +3,9 @@ use std::time::Instant;
 use tauri::{AppHandle, State};
 
 use crate::config::ConnectionProfile;
+use crate::local::{self, LocalShellType};
 use crate::ssh::{self, AgentIdentityInfo, ChannelInput, SshSession};
-use crate::state::{ActiveChannel, ActiveSession, AppState, ChannelKind};
+use crate::state::{ActiveChannel, AppState, ChannelBackend, SshSessionEntry};
 
 // types
 
@@ -31,6 +32,20 @@ pub struct SystemStats {
     pub net_rx_bytes: u64,
     pub net_tx_bytes: u64,
     pub latency_ms: u64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct OpenSshShellResult {
+    pub channel_id: String,
+    pub session_id: String,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SessionInfo {
+    pub session_id: String,
+    pub profile_id: String,
+    pub profile_name: String,
+    pub channel_count: usize,
 }
 
 // config
@@ -95,7 +110,6 @@ pub async fn decrypt_profile_passphrase(
 
 #[tauri::command]
 pub async fn detect_agent() -> Result<bool, String> {
-    // spawn_blocking because AgentClient's futures aren't provably Send
     let rt = tokio::runtime::Handle::current();
     tokio::task::spawn_blocking(move || {
         rt.block_on(async { ssh::connect_agent().await.map(|_| true) })
@@ -194,6 +208,8 @@ async fn probe_host_inner(
     })
 }
 
+/// connect to an ssh host (or reuse existing session) and return sessionId.
+/// still used by ConnectionScreen for the initial boot connection
 #[tauri::command]
 pub async fn connect_ssh(
     app: AppHandle,
@@ -214,7 +230,7 @@ pub async fn connect_ssh(
     };
     let session_id = uuid::Uuid::new_v4().to_string();
 
-    // Update last_connected on the profile
+    // update last_connected on the profile
     let mut config = state.get_config(&app).await?;
     if let Some(profile) = config.profiles.iter_mut().find(|p| p.id == profile_id) {
         profile.last_connected = Some(chrono_now());
@@ -222,14 +238,14 @@ pub async fn connect_ssh(
     config.last_profile_id = Some(profile_id.clone());
     state.update_config(&app, config).await?;
 
-    let active = ActiveSession {
+    let entry = SshSessionEntry {
         session_id: session_id.clone(),
         profile_id,
         ssh: session,
-        channels: std::collections::HashMap::new(),
+        channel_count: 0,
     };
 
-    state.sessions.lock().await.insert(session_id.clone(), active);
+    state.ssh_sessions.lock().await.insert(session_id.clone(), entry);
     Ok(session_id)
 }
 
@@ -238,23 +254,32 @@ pub async fn disconnect_ssh(
     state: State<'_, AppState>,
     session_id: String,
 ) -> Result<(), String> {
-    let mut sessions = state.sessions.lock().await;
-    if let Some(mut session) = sessions.remove(&session_id) {
-        // close all channels
-        for (_, channel) in session.channels.drain() {
-            match channel.kind {
-                ChannelKind::Shell { input_tx } => {
-                    let _ = input_tx.send(ChannelInput::Close).await;
-                }
-            }
+    // remove all channels belonging to this session
+    let mut channels = state.channels.lock().await;
+    let to_remove: Vec<String> = channels
+        .iter()
+        .filter(|(_, ch)| ch.session_id() == Some(&session_id))
+        .map(|(id, _)| id.clone())
+        .collect();
+    for id in &to_remove {
+        if let Some(ch) = channels.remove(id) {
+            let _ = ch.input_tx().send(ChannelInput::Close).await;
         }
-        let _ = session.ssh.disconnect().await;
+    }
+    drop(channels);
+
+    // disconnect the ssh session
+    let mut sessions = state.ssh_sessions.lock().await;
+    if let Some(mut entry) = sessions.remove(&session_id) {
+        let _ = entry.ssh.disconnect().await;
     }
     Ok(())
 }
 
-// terminal
+// terminal - shell operations (backend-agnostic, only need channel_id)
 
+/// open a shell channel on an existing ssh session.
+/// used by the initial connection flow (ConnectionScreen -> first tab)
 #[tauri::command]
 pub async fn open_shell(
     app: AppHandle,
@@ -263,99 +288,253 @@ pub async fn open_shell(
     cols: u32,
     rows: u32,
 ) -> Result<String, String> {
-    let mut sessions = state.sessions.lock().await;
-    let session = sessions
+    let mut sessions = state.ssh_sessions.lock().await;
+    let entry = sessions
         .get_mut(&session_id)
         .ok_or("Session not found")?;
 
-    let channel = session.ssh.open_shell(cols, rows).await?;
+    let channel = entry.ssh.open_shell(cols, rows).await?;
     let channel_id = uuid::Uuid::new_v4().to_string();
 
     let input_tx = ssh::spawn_channel_io(app, session_id.clone(), channel_id.clone(), channel);
+    entry.channel_count += 1;
 
-    session.channels.insert(
+    let active = ActiveChannel {
+        channel_id: channel_id.clone(),
+        backend: ChannelBackend::Ssh {
+            session_id: session_id.clone(),
+            input_tx,
+        },
+    };
+    drop(sessions); // release ssh lock before acquiring channels lock
+    state.channels.lock().await.insert(channel_id.clone(), active);
+
+    Ok(channel_id)
+}
+
+/// connect to a profile (or reuse existing session) and open a shell in one call.
+/// used by the tab dropdown for opening new ssh tabs after initial connection
+#[tauri::command]
+pub async fn open_ssh_shell(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    profile_id: String,
+    cols: u32,
+    rows: u32,
+    passphrase: Option<String>,
+) -> Result<OpenSshShellResult, String> {
+    let mut sessions = state.ssh_sessions.lock().await;
+
+    // check for existing session to this profile
+    let existing_sid = sessions
+        .values()
+        .find(|e| e.profile_id == profile_id)
+        .map(|e| e.session_id.clone());
+
+    if let Some(sid) = existing_sid {
+        // reuse existing session
+        let entry = sessions.get_mut(&sid).unwrap();
+        let channel = entry.ssh.open_shell(cols, rows).await?;
+        let channel_id = uuid::Uuid::new_v4().to_string();
+
+        let input_tx = ssh::spawn_channel_io(
+            app, sid.clone(), channel_id.clone(), channel,
+        );
+        entry.channel_count += 1;
+
+        let active = ActiveChannel {
+            channel_id: channel_id.clone(),
+            backend: ChannelBackend::Ssh {
+                session_id: sid.clone(),
+                input_tx,
+            },
+        };
+        drop(sessions);
+        state.channels.lock().await.insert(channel_id.clone(), active);
+
+        return Ok(OpenSshShellResult {
+            channel_id,
+            session_id: sid,
+        });
+    }
+
+    drop(sessions); // release lock while we connect
+
+    // need to create a new session - load profile from config
+    let config = state.get_config(&app).await?;
+    let profile = config
+        .profiles
+        .iter()
+        .find(|p| p.id == profile_id)
+        .ok_or("Profile not found")?
+        .clone();
+
+    // figure out auth
+    let use_agent = profile.auth_mode == crate::config::AuthMode::Agent;
+    let pp = if !use_agent && profile.has_passphrase {
+        // try saved passphrase first, fall back to provided one
+        if let Some(ref encrypted) = profile.saved_passphrase {
+            crate::config::decrypt_passphrase(&app, encrypted).ok()
+        } else {
+            passphrase
+        }
+    } else {
+        None
+    };
+
+    let session = if use_agent {
+        SshSession::connect_with_agent(&profile.host, profile.port, &profile.username).await?
+    } else {
+        SshSession::connect(
+            &profile.host,
+            profile.port,
+            &profile.username,
+            &profile.key_path,
+            pp,
+        )
+        .await?
+    };
+
+    let session_id = uuid::Uuid::new_v4().to_string();
+
+    // update last_connected
+    let mut cfg = state.get_config(&app).await?;
+    if let Some(p) = cfg.profiles.iter_mut().find(|p| p.id == profile_id) {
+        p.last_connected = Some(chrono_now());
+    }
+    cfg.last_profile_id = Some(profile_id.clone());
+    state.update_config(&app, cfg).await?;
+
+    // open shell on the new session
+    let mut ssh_session = session;
+    let channel = ssh_session.open_shell(cols, rows).await?;
+    let channel_id = uuid::Uuid::new_v4().to_string();
+
+    let input_tx = ssh::spawn_channel_io(
+        app, session_id.clone(), channel_id.clone(), channel,
+    );
+
+    let entry = SshSessionEntry {
+        session_id: session_id.clone(),
+        profile_id,
+        ssh: ssh_session,
+        channel_count: 1,
+    };
+
+    state.ssh_sessions.lock().await.insert(session_id.clone(), entry);
+    state.channels.lock().await.insert(
         channel_id.clone(),
         ActiveChannel {
             channel_id: channel_id.clone(),
-            kind: ChannelKind::Shell { input_tx },
+            backend: ChannelBackend::Ssh {
+                session_id: session_id.clone(),
+                input_tx,
+            },
+        },
+    );
+
+    Ok(OpenSshShellResult {
+        channel_id,
+        session_id,
+    })
+}
+
+/// spawn a local shell (powershell, cmd, wsl)
+#[tauri::command]
+pub async fn open_local_shell(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    shell_type: String,
+    cols: u32,
+    rows: u32,
+    cwd: Option<String>,
+) -> Result<String, String> {
+    let shell = match shell_type.as_str() {
+        "powershell" => LocalShellType::PowerShell,
+        "cmd" => LocalShellType::Cmd,
+        "wsl" => LocalShellType::Wsl,
+        other => return Err(format!("unknown shell type: {other}")),
+    };
+
+    let channel_id = uuid::Uuid::new_v4().to_string();
+    let input_tx = local::spawn_local_shell(
+        app,
+        channel_id.clone(),
+        shell,
+        cols as u16,
+        rows as u16,
+        cwd,
+    )?;
+
+    state.channels.lock().await.insert(
+        channel_id.clone(),
+        ActiveChannel {
+            channel_id: channel_id.clone(),
+            backend: ChannelBackend::Local { input_tx },
         },
     );
 
     Ok(channel_id)
 }
 
+/// close any channel (ssh or local) - just needs channel_id
 #[tauri::command]
 pub async fn close_shell(
     state: State<'_, AppState>,
-    session_id: String,
     channel_id: String,
 ) -> Result<(), String> {
-    let mut sessions = state.sessions.lock().await;
-    let session = sessions
-        .get_mut(&session_id)
-        .ok_or("Session not found")?;
+    let mut channels = state.channels.lock().await;
+    if let Some(channel) = channels.remove(&channel_id) {
+        let _ = channel.input_tx().send(ChannelInput::Close).await;
 
-    if let Some(channel) = session.channels.remove(&channel_id) {
-        match channel.kind {
-            ChannelKind::Shell { input_tx } => {
-                let _ = input_tx.send(ChannelInput::Close).await;
+        // decrement ssh session refcount if applicable
+        if let Some(sid) = channel.session_id() {
+            let mut sessions = state.ssh_sessions.lock().await;
+            if let Some(entry) = sessions.get_mut(sid) {
+                entry.channel_count = entry.channel_count.saturating_sub(1);
             }
         }
     }
     Ok(())
 }
 
+/// write data to any channel - backend-agnostic
 #[tauri::command]
 pub async fn write_to_shell(
     state: State<'_, AppState>,
-    session_id: String,
     channel_id: String,
     data: String,
 ) -> Result<(), String> {
-    let sessions = state.sessions.lock().await;
-    let session = sessions
-        .get(&session_id)
-        .ok_or("Session not found")?;
-    let channel = session
-        .channels
+    let channels = state.channels.lock().await;
+    let channel = channels
         .get(&channel_id)
         .ok_or("Channel not found")?;
 
-    match &channel.kind {
-        ChannelKind::Shell { input_tx } => {
-            input_tx
-                .send(ChannelInput::Data(data.into_bytes()))
-                .await
-                .map_err(|e| format!("Failed to send data: {e}"))
-        }
-    }
+    channel
+        .input_tx()
+        .send(ChannelInput::Data(data.into_bytes()))
+        .await
+        .map_err(|e| format!("Failed to send data: {e}"))
 }
 
+/// resize any channel - backend-agnostic
 #[tauri::command]
 pub async fn resize_shell(
     state: State<'_, AppState>,
-    session_id: String,
     channel_id: String,
     cols: u32,
     rows: u32,
 ) -> Result<(), String> {
-    let sessions = state.sessions.lock().await;
-    let session = sessions
-        .get(&session_id)
-        .ok_or("Session not found")?;
-    let channel = session
-        .channels
+    let channels = state.channels.lock().await;
+    let channel = channels
         .get(&channel_id)
         .ok_or("Channel not found")?;
 
-    match &channel.kind {
-        ChannelKind::Shell { input_tx } => {
-            input_tx
-                .send(ChannelInput::Resize { cols, rows })
-                .await
-                .map_err(|e| format!("Failed to send resize: {e}"))
-        }
-    }
+    channel
+        .input_tx()
+        .send(ChannelInput::Resize { cols, rows })
+        .await
+        .map_err(|e| format!("Failed to send resize: {e}"))
 }
 
 #[tauri::command]
@@ -363,11 +542,40 @@ pub async fn ping_session(
     state: State<'_, AppState>,
     session_id: String,
 ) -> Result<u64, String> {
-    let mut sessions = state.sessions.lock().await;
-    let session = sessions
+    let mut sessions = state.ssh_sessions.lock().await;
+    let entry = sessions
         .get_mut(&session_id)
         .ok_or("Session not found")?;
-    session.ssh.ping().await
+    entry.ssh.ping().await
+}
+
+/// list active ssh sessions (for the frontend to know what's connected)
+#[tauri::command]
+pub async fn get_active_sessions(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<SessionInfo>, String> {
+    let sessions = state.ssh_sessions.lock().await;
+    let config = state.get_config(&app).await?;
+
+    Ok(sessions
+        .values()
+        .map(|entry| {
+            let profile_name = config
+                .profiles
+                .iter()
+                .find(|p| p.id == entry.profile_id)
+                .map(|p| p.name.clone())
+                .unwrap_or_else(|| "Unknown".to_string());
+
+            SessionInfo {
+                session_id: entry.session_id.clone(),
+                profile_id: entry.profile_id.clone(),
+                profile_name,
+                channel_count: entry.channel_count,
+            }
+        })
+        .collect())
 }
 
 // stats
@@ -393,14 +601,14 @@ pub async fn fetch_system_stats(
     state: State<'_, AppState>,
     session_id: String,
 ) -> Result<SystemStats, String> {
-    let mut sessions = state.sessions.lock().await;
-    let session = sessions
+    let mut sessions = state.ssh_sessions.lock().await;
+    let entry = sessions
         .get_mut(&session_id)
         .ok_or("Session not found")?;
 
     // single round-trip, also doubles as latency measurement
     let start = Instant::now();
-    let raw = session.ssh.exec_command(STATS_SCRIPT).await.unwrap_or_default();
+    let raw = entry.ssh.exec_command(STATS_SCRIPT).await.unwrap_or_default();
     let latency_ms = start.elapsed().as_millis() as u64;
 
     // parse tagged lines
@@ -461,6 +669,19 @@ pub async fn fetch_system_stats(
     })
 }
 
+/// local system stats - same struct, no ssh needed
+#[tauri::command]
+pub async fn fetch_local_stats() -> Result<SystemStats, String> {
+    Ok(local::fetch_local_system_stats())
+}
+
+/// get the --path arg if KuroLink was launched with one
+/// (for future "Open KuroLink here" context menu integration)
+#[tauri::command]
+pub async fn get_launch_path(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    Ok(state.launch_path.lock().await.clone())
+}
+
 // helpers
 
 fn parse_memory(output: &str) -> (Option<f32>, Option<String>) {
@@ -503,6 +724,7 @@ async fn detect_thermal_zone(ssh: &mut SshSession) -> String {
     .unwrap_or_else(|_| "/sys/class/thermal/thermal_zone0".to_string())
 }
 
+#[allow(dead_code)]
 async fn detect_net_iface(ssh: &mut SshSession) -> String {
     ssh.exec_command("ip route show default | awk '{print $5}' | head -1")
         .await
