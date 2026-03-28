@@ -21,6 +21,7 @@ interface Props {
     profileId: string,
     profile: ConnectionProfile,
   ) => void;
+  onLocalTerminal: (shellType: "powershell" | "cmd" | "wsl") => void;
 }
 
 function formatTimestamp(ts: string): string {
@@ -50,7 +51,7 @@ function statClass(value: number, cautionAt: number, criticalAt: number): string
   return "stat-nominal";
 }
 
-export default function ConnectionScreen({ onConnected }: Props) {
+export default function ConnectionScreen({ onConnected, onLocalTerminal }: Props) {
   const [profiles, setProfiles] = useState<ConnectionProfile[]>([]);
   const [form, setForm] = useState({ ...DEFAULT_PROFILE });
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -548,42 +549,59 @@ export default function ConnectionScreen({ onConnected }: Props) {
           </div>
 
           {/* command switches */}
-          <div className="command-switches">
-            <span className="command-switches-label">COMMAND</span>
-
-            {/* probe */}
-            <button
-              className={`cmd-switch${probing ? " cmd-switch-active" : ""}${status?.reachable ? " cmd-switch-success" : ""}`}
-              onClick={handleProbe}
-              disabled={!formValid || probing}
-            >
-              <span className={`cmd-switch-indicator${probing ? " indicator-pulse" : ""}${status?.reachable ? " indicator-green" : ""}`} />
-              <span className="cmd-switch-label">PROBE</span>
-              <span className="cmd-switch-sub">SCAN</span>
-            </button>
-
-            {/* cli */}
-            <button
-              className={`cmd-switch cmd-switch-primary${connecting ? " cmd-switch-active" : ""}`}
-              onClick={handleConnect}
-              disabled={!formValid || connecting}
-            >
-              <span className={`cmd-switch-indicator${connecting ? " indicator-pulse indicator-cyan" : ""}`} />
-              <span className="cmd-switch-label">CLI</span>
-              <span className="cmd-switch-sub">TERMINAL</span>
-            </button>
-
-            {/* de - locked for now */}
-            <button
-              className="cmd-switch cmd-switch-locked"
-              disabled
-              title="Coming in Phase 2"
-            >
-              <span className="cmd-switch-indicator" />
-              <span className="cmd-switch-label">DE</span>
-              <span className="cmd-switch-sub">DESKTOP</span>
-              <span className="cmd-switch-lock">LOCKED</span>
-            </button>
+          <div className="command-panel">
+            <span className="command-panel-label">COMMAND</span>
+            <div className="command-columns">
+              <div className="command-column">
+                <span className="command-column-label">REMOTE</span>
+                <button
+                  className={`cmd-switch${probing ? " cmd-switch-active" : ""}${status?.reachable ? " cmd-switch-success" : ""}`}
+                  onClick={handleProbe}
+                  disabled={!formValid || probing}
+                >
+                  <span className={`cmd-switch-indicator${probing ? " indicator-pulse" : ""}${status?.reachable ? " indicator-green" : ""}`} />
+                  <span className="cmd-switch-label">PROBE</span>
+                  <span className="cmd-switch-sub">SCAN</span>
+                </button>
+                <button
+                  className={`cmd-switch cmd-switch-primary${connecting ? " cmd-switch-active" : ""}`}
+                  onClick={handleConnect}
+                  disabled={!formValid || connecting}
+                >
+                  <span className={`cmd-switch-indicator${connecting ? " indicator-pulse indicator-cyan" : ""}`} />
+                  <span className="cmd-switch-label">CLI</span>
+                  <span className="cmd-switch-sub">TERMINAL</span>
+                </button>
+                <button
+                  className="cmd-switch cmd-switch-locked"
+                  disabled
+                  title="Coming in Phase 2"
+                >
+                  <span className="cmd-switch-indicator" />
+                  <span className="cmd-switch-label">DE</span>
+                  <span className="cmd-switch-sub">DESKTOP</span>
+                  <span className="cmd-switch-lock">LOCKED</span>
+                </button>
+              </div>
+              <div className="command-column">
+                <span className="command-column-label">LOCAL</span>
+                <button className="cmd-switch cmd-switch-local" onClick={() => onLocalTerminal("powershell")}>
+                  <span className="cmd-switch-indicator indicator-green" />
+                  <span className="cmd-switch-label">PS</span>
+                  <span className="cmd-switch-sub">POWERSHELL</span>
+                </button>
+                <button className="cmd-switch cmd-switch-local" onClick={() => onLocalTerminal("cmd")}>
+                  <span className="cmd-switch-indicator indicator-green" />
+                  <span className="cmd-switch-label">CMD</span>
+                  <span className="cmd-switch-sub">PROMPT</span>
+                </button>
+                <button className="cmd-switch cmd-switch-local" onClick={() => onLocalTerminal("wsl")}>
+                  <span className="cmd-switch-indicator indicator-green" />
+                  <span className="cmd-switch-label">WSL</span>
+                  <span className="cmd-switch-sub">LINUX</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 

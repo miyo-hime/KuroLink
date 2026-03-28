@@ -2,7 +2,7 @@ use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use tauri::{AppHandle, Emitter};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 use crate::ssh::ChannelInput;
 
@@ -25,8 +25,8 @@ impl LocalShellType {
 }
 
 /// spawn a local shell process and bridge it to tauri events.
-/// returns an input sender using the same ChannelInput protocol as ssh channels -
-/// the frontend doesn't know the difference
+/// returns (input_sender, start_signal) - the reader thread won't push output
+/// until start_signal is sent, so the frontend has time to register its listener
 pub fn spawn_local_shell(
     app: AppHandle,
     channel_id: String,
@@ -34,7 +34,7 @@ pub fn spawn_local_shell(
     cols: u16,
     rows: u16,
     cwd: Option<String>,
-) -> Result<mpsc::Sender<ChannelInput>, String> {
+) -> Result<(mpsc::Sender<ChannelInput>, oneshot::Sender<()>), String> {
     let pty_system = native_pty_system();
 
     let pair = pty_system
@@ -68,11 +68,16 @@ pub fn spawn_local_shell(
         .map_err(|e| format!("failed to take pty writer: {e}"))?;
 
     let (tx, mut rx) = mpsc::channel::<ChannelInput>(256);
+    let (start_tx, start_rx) = oneshot::channel::<()>();
 
     // reader thread: blocking IO from pty -> tauri events
+    // waits for start signal so the frontend listener is ready before we push output
     let app_read = app.clone();
     let cid_read = channel_id.clone();
     std::thread::spawn(move || {
+        // hold until the frontend says "i'm listening"
+        let _ = start_rx.blocking_recv();
+
         let mut buf = [0u8; 4096];
         loop {
             match reader.read(&mut buf) {
@@ -118,7 +123,7 @@ pub fn spawn_local_shell(
         }
     });
 
-    Ok(tx)
+    Ok((tx, start_tx))
 }
 
 // local system stats via sysinfo

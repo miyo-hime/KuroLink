@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{mpsc, oneshot, Mutex};
 
 use crate::config::AppConfig;
 use crate::ssh::{ChannelInput, SshSession};
@@ -18,6 +18,9 @@ pub enum ChannelBackend {
 pub struct ActiveChannel {
     pub channel_id: String,
     pub backend: ChannelBackend,
+    // local shells wait for the frontend to signal "listener ready" before
+    // the reader thread starts pushing output. None for ssh channels
+    pub start_signal: Option<oneshot::Sender<()>>,
 }
 
 impl ActiveChannel {

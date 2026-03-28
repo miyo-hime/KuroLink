@@ -10,6 +10,7 @@ function App() {
   const [view, setView] = useState<AppView>("connect");
   const [initialSessionId, setInitialSessionId] = useState<string | null>(null);
   const [initialProfile, setInitialProfile] = useState<ConnectionProfile | null>(null);
+  const [initialLocalShell, setInitialLocalShell] = useState<"powershell" | "cmd" | "wsl" | null>(null);
   const [glitching, setGlitching] = useState(false);
   const glitchRef = useRef<HTMLDivElement>(null);
 
@@ -20,8 +21,16 @@ function App() {
   ) => {
     setInitialSessionId(sid);
     setInitialProfile(prof);
+    setInitialLocalShell(null);
     setView("terminal");
   };
+
+  const handleLocalTerminal = useCallback((shellType: "powershell" | "cmd" | "wsl") => {
+    setInitialSessionId(null);
+    setInitialProfile(null);
+    setInitialLocalShell(shellType);
+    setView("terminal");
+  }, []);
 
   const handleDisconnected = useCallback(() => {
     setGlitching(true);
@@ -29,6 +38,7 @@ function App() {
       setGlitching(false);
       setInitialSessionId(null);
       setInitialProfile(null);
+      setInitialLocalShell(null);
       setView("connect");
     }, 400);
   }, []);
@@ -36,13 +46,14 @@ function App() {
   return (
     <div className="app">
       {view === "connect" && (
-        <ConnectionScreen onConnected={handleConnected} />
+        <ConnectionScreen onConnected={handleConnected} onLocalTerminal={handleLocalTerminal} />
       )}
-      {view === "terminal" && initialSessionId && initialProfile && (
+      {view === "terminal" && (initialLocalShell || (initialSessionId && initialProfile)) && (
         <div ref={glitchRef} className={glitching ? "view-glitch-out" : ""} style={{ height: "100%", width: "100%" }}>
           <MainView
             initialSessionId={initialSessionId}
             initialProfile={initialProfile}
+            initialLocalShell={initialLocalShell}
             onDisconnected={handleDisconnected}
           />
         </div>

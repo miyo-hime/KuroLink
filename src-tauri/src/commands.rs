@@ -305,6 +305,7 @@ pub async fn open_shell(
             session_id: session_id.clone(),
             input_tx,
         },
+        start_signal: None,
     };
     drop(sessions); // release ssh lock before acquiring channels lock
     state.channels.lock().await.insert(channel_id.clone(), active);
@@ -348,6 +349,7 @@ pub async fn open_ssh_shell(
                 session_id: sid.clone(),
                 input_tx,
             },
+            start_signal: None,
         };
         drop(sessions);
         state.channels.lock().await.insert(channel_id.clone(), active);
@@ -430,6 +432,7 @@ pub async fn open_ssh_shell(
                 session_id: session_id.clone(),
                 input_tx,
             },
+            start_signal: None,
         },
     );
 
@@ -457,7 +460,7 @@ pub async fn open_local_shell(
     };
 
     let channel_id = uuid::Uuid::new_v4().to_string();
-    let input_tx = local::spawn_local_shell(
+    let (input_tx, start_signal) = local::spawn_local_shell(
         app,
         channel_id.clone(),
         shell,
@@ -471,10 +474,26 @@ pub async fn open_local_shell(
         ActiveChannel {
             channel_id: channel_id.clone(),
             backend: ChannelBackend::Local { input_tx },
+            start_signal: Some(start_signal),
         },
     );
 
     Ok(channel_id)
+}
+
+/// tell a local shell "the frontend listener is ready, start pushing output"
+#[tauri::command]
+pub async fn channel_ready(
+    state: State<'_, AppState>,
+    channel_id: String,
+) -> Result<(), String> {
+    let mut channels = state.channels.lock().await;
+    if let Some(channel) = channels.get_mut(&channel_id) {
+        if let Some(signal) = channel.start_signal.take() {
+            let _ = signal.send(());
+        }
+    }
+    Ok(())
 }
 
 /// close any channel (ssh or local) - just needs channel_id

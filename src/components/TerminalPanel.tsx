@@ -6,7 +6,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { open } from "@tauri-apps/plugin-shell";
 import "@xterm/xterm/css/xterm.css";
-import { writeToShell, resizeShell, onTerminalOutput, onTerminalClosed } from "../lib/ipc";
+import { writeToShell, resizeShell, channelReady, onTerminalOutput, onTerminalClosed } from "../lib/ipc";
 import "./TerminalPanel.css";
 
 interface Props {
@@ -65,7 +65,7 @@ export default function TerminalPanel({ channelId, active, searchVisible, onSear
 
     const term = new Terminal({
       theme: TERMINAL_THEME,
-      fontFamily: '"JetBrains Mono", "IBM Plex Mono", "Fira Code", "Cascadia Code", monospace',
+      fontFamily: '"JetBrainsMono Nerd Font", "CaskaydiaCove Nerd Font", "FiraCode Nerd Font", "JetBrains Mono", "IBM Plex Mono", "Fira Code", "Cascadia Code", monospace',
       fontSize: DEFAULT_FONT_SIZE,
       cursorBlink: true,
       cursorStyle: "bar",
@@ -180,7 +180,12 @@ export default function TerminalPanel({ channelId, active, searchVisible, onSear
 
     onTerminalOutput(channelId, (data) => {
       term.write(data);
-    }).then((fn) => { unlistenOutput = fn; });
+    }).then((fn) => {
+      unlistenOutput = fn;
+      // listener is live - tell the backend it's safe to start pushing output
+      // (local shells gate their reader thread on this signal)
+      channelReady(channelId).catch(() => {});
+    });
 
     onTerminalClosed(channelId, () => {
       onClosed?.();
