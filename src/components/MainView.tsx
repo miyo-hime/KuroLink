@@ -20,14 +20,15 @@ import StatusBar from "./StatusBar";
 import "./MainView.css";
 
 interface Props {
-  initialSessionId: string;
-  initialProfile: ConnectionProfile;
+  initialSessionId: string | null;
+  initialProfile: ConnectionProfile | null;
+  initialLocalShell: "powershell" | "cmd" | "wsl" | null;
   onDisconnected: () => void;
 }
 
 const STATS_POLL_MS = 10_000;
 
-export default function MainView({ initialSessionId, initialProfile, onDisconnected }: Props) {
+export default function MainView({ initialSessionId, initialProfile, initialLocalShell, onDisconnected }: Props) {
   const [tabs, setTabs] = useState<TerminalTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [stats, setStats] = useState<SystemStats | null>(null);
@@ -60,11 +61,15 @@ export default function MainView({ initialSessionId, initialProfile, onDisconnec
   const activeLatency =
     activeTab?.backend.kind === "ssh" && stats ? stats.latency_ms : null;
 
-  // -- mount: create first ssh tab + load profiles for dropdown --
+  // -- mount: create first tab (ssh or local) + load profiles for dropdown --
   useEffect(() => {
     if (mountedRef.current) return;
     mountedRef.current = true;
-    createSshTabFromSession(initialSessionId, initialProfile);
+    if (initialLocalShell) {
+      createLocalTab(initialLocalShell);
+    } else if (initialSessionId && initialProfile) {
+      createSshTabFromSession(initialSessionId, initialProfile);
+    }
     getProfiles().then(setProfiles).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -256,13 +261,56 @@ export default function MainView({ initialSessionId, initialProfile, onDisconnec
     [activeTabId, tabs], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
+  // windows shells set the title to full exe paths and command lines -
+  // extract just the program name like windows terminal does
+  const cleanLocalTitle = (raw: string): string => {
+    let name = raw;
+    // "C:\...\powershell.exe" -> extract basename
+    if (/^[a-zA-Z]:\\/.test(name)) {
+      name = name.split(/[/\\]/).pop() || name;
+    } else {
+      // "npm exec @playwright/mcp@latest" -> first token
+      name = name.split(/\s+/)[0];
+      if (name.includes("\\") || name.includes("/")) {
+        name = name.split(/[/\\]/).pop() || name;
+      }
+    }
+    // strip .exe/.cmd/.bat
+    return name.replace(/\.(exe|cmd|bat|com)$/i, "");
+  };
+
+  // throttle local tab title updates (200ms) to prevent flicker from
+  // rapid subprocess chains. same approach as windows terminal
+  const titleTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
   const handleTabTitleChange = useCallback(
     (channelId: string, title: string) => {
-      setTabs((prev) =>
-        prev.map((t) => (t.channelId === channelId ? { ...t, title } : t)),
+      const applyTitle = (cleaned: string) => {
+        setTabs((prev) =>
+          prev.map((t) => (t.channelId === channelId ? { ...t, title: cleaned } : t)),
+        );
+      };
+
+      // ssh tabs: pass through immediately, shells handle titles well
+      const tab = tabs.find((t) => t.channelId === channelId);
+      if (!tab || tab.backend.kind !== "local") {
+        applyTitle(title);
+        return;
+      }
+
+      // local tabs: clean + throttle
+      const cleaned = cleanLocalTitle(title);
+      const existing = titleTimersRef.current.get(channelId);
+      if (existing) clearTimeout(existing);
+      titleTimersRef.current.set(
+        channelId,
+        setTimeout(() => {
+          titleTimersRef.current.delete(channelId);
+          applyTitle(cleaned);
+        }, 200),
       );
     },
-    [],
+    [tabs],
   );
 
   // -- disconnect all --

@@ -28,6 +28,7 @@ pub fn run() {
             commands::open_shell,
             commands::open_ssh_shell,
             commands::open_local_shell,
+            commands::channel_ready,
             commands::close_shell,
             commands::write_to_shell,
             commands::resize_shell,

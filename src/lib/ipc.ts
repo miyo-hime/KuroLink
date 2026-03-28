@@ -80,6 +80,9 @@ export const openLocalShell = (shellType: string, cols: number, rows: number, cw
 
 // -- Terminal: IO (backend-agnostic, just need channelId) --
 
+export const channelReady = (channelId: string) =>
+  invoke<void>("channel_ready", { channelId });
+
 export const closeShell = (channelId: string) =>
   invoke<void>("close_shell", { channelId });
 
