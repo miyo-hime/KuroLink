@@ -36,7 +36,9 @@ export default function TabBar({
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const arrowRef = useRef<HTMLButtonElement>(null);
   const contextRef = useRef<HTMLDivElement>(null);
 
   // close dropdown/context menu on click-outside
@@ -138,6 +140,7 @@ export default function TabBar({
 
   return (
     <div className="tab-bar">
+      <div className="tab-scroll">
       {tabs.map((tab, index) => (
         <div
           key={tab.channelId}
@@ -172,6 +175,7 @@ export default function TabBar({
           </button>
         </div>
       ))}
+      </div>
 
       {/* new tab: split button */}
       <div className="tab-new-group">
@@ -180,14 +184,30 @@ export default function TabBar({
         </button>
         <div className="tab-dropdown-wrapper" ref={dropdownRef}>
           <button
+            ref={arrowRef}
             className={`tab-dropdown-arrow ${dropdownOpen ? "tab-dropdown-open" : ""}`}
-            onClick={() => setDropdownOpen((v) => !v)}
+            onClick={() => {
+              setDropdownOpen((v) => {
+                if (!v && arrowRef.current) {
+                  const rect = arrowRef.current.getBoundingClientRect();
+                  const menuWidth = 220;
+                  // anchor left to the button, but clamp so it doesn't overflow either edge
+                  let left = rect.left;
+                  if (left + menuWidth > window.innerWidth) {
+                    left = window.innerWidth - menuWidth - 4;
+                  }
+                  if (left < 4) left = 4;
+                  setDropdownPos({ top: rect.bottom, left });
+                }
+                return !v;
+              });
+            }}
             title="Open new connection"
           >
             ▾
           </button>
-          {dropdownOpen && (
-            <div className="tab-dropdown">
+          {dropdownOpen && dropdownPos && (
+            <div className="tab-dropdown" style={{ top: dropdownPos.top, left: dropdownPos.left }}>
               <div className="tab-dropdown-section">LOCAL</div>
               <button className="tab-dropdown-item" onClick={() => { onNewLocalTab("powershell"); setDropdownOpen(false); }}>
                 PowerShell

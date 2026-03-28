@@ -9,26 +9,34 @@
   border-bottom: 1px solid var(--border-subtle);
   height: 32px;
   flex-shrink: 0;
-  overflow-x: auto;
   position: relative;
 }
 
-/* fade edges when tabs overflow */
-.tab-bar {
+/* scrollable tab area */
+.tab-scroll {
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  min-width: 0;
   mask-image: linear-gradient(
     to right,
     transparent 0px,
     black 8px,
-    black calc(100% - 48px),
+    black calc(100% - 12px),
     transparent 100%
   );
   -webkit-mask-image: linear-gradient(
     to right,
     transparent 0px,
     black 8px,
-    black calc(100% - 48px),
+    black calc(100% - 12px),
     transparent 100%
   );
+  scrollbar-width: none;
+}
+
+.tab-scroll::-webkit-scrollbar {
+  display: none;
 }
 
 .tab {
@@ -157,7 +165,6 @@
   display: flex;
   align-items: stretch;
   flex-shrink: 0;
-  margin-left: auto;
 }
 
 .tab-new {
@@ -180,6 +187,8 @@
 
 .tab-dropdown-wrapper {
   position: relative;
+  display: flex;
+  align-items: stretch;
 }
 
 .tab-dropdown-arrow {
@@ -187,12 +196,13 @@
   border: none;
   border-left: 1px solid rgba(74, 74, 100, 0.2);
   color: var(--text-dim);
-  font-size: 0.65rem;
-  padding: 0 0.4rem;
+  font-size: 1.1rem;
+  padding: 0 0.5rem;
   cursor: pointer;
   transition: all var(--transition-fast);
   display: flex;
   align-items: center;
+  justify-content: center;
 }
 
 .tab-dropdown-arrow:hover,
@@ -203,9 +213,7 @@
 
 /* dropdown menu */
 .tab-dropdown {
-  position: absolute;
-  top: 100%;
-  right: 0;
+  position: fixed;
   min-width: 220px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-subtle);
