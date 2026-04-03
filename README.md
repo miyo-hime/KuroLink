@@ -2,7 +2,11 @@
 
 Terminal emulator for people who think Windows Terminal is fine but wish it looked like a mecha command console. Built with Tauri 2.
 
+[![Primary Repo](https://img.shields.io/badge/primary-Forgejo-orange?logo=forgejo)](https://codex.kurobox.me/miyo-rin/KuroLink)
+[![GitHub Mirror](https://img.shields.io/badge/mirror-GitHub-gray?logo=github)](https://github.com/miyo-hime/KuroLink)
+![Version](https://img.shields.io/badge/v0.6.1-cyan)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
+![Built with Tauri](https://img.shields.io/badge/Tauri%202-24C8D8?logo=tauri&logoColor=white)
 
 ## what is this
 
@@ -37,7 +41,7 @@ A terminal app. Local shells, SSH connection profiles, live system stats, tabs y
 
 ## download
 
-Grab the latest `.exe` from [Releases](https://github.com/miyo-hime/KuroLink/releases). Run it. That's the whole install process.
+Grab the latest `.exe` from [Releases](https://codex.kurobox.me/miyo-rin/KuroLink/releases) (or from the [GitHub mirror](https://github.com/miyo-hime/KuroLink/releases)). Run it. That's the whole install process.
 
 Config saves as `kurolink.json` next to the exe. Move the folder wherever you want.
 
