@@ -59,9 +59,7 @@ pub struct AppState {
 impl AppState {
     pub fn new() -> Self {
         // check for --path arg
-        let launch_path = std::env::args()
-            .skip_while(|a| a != "--path")
-            .nth(1);
+        let launch_path = std::env::args().skip_while(|a| a != "--path").nth(1);
 
         Self {
             ssh_sessions: Mutex::new(HashMap::new()),
@@ -81,7 +79,11 @@ impl AppState {
         Ok(cfg)
     }
 
-    pub async fn update_config(&self, app: &tauri::AppHandle, config: AppConfig) -> Result<(), String> {
+    pub async fn update_config(
+        &self,
+        app: &tauri::AppHandle,
+        config: AppConfig,
+    ) -> Result<(), String> {
         crate::config::save_config(app, &config)?;
         *self.config.lock().await = Some(config);
         Ok(())

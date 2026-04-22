@@ -51,13 +51,20 @@ pub struct SessionInfo {
 // config
 
 #[tauri::command]
-pub async fn get_profiles(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<ConnectionProfile>, String> {
+pub async fn get_profiles(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<ConnectionProfile>, String> {
     let config = state.get_config(&app).await?;
     Ok(config.profiles)
 }
 
 #[tauri::command]
-pub async fn save_profile(app: AppHandle, state: State<'_, AppState>, profile: ConnectionProfile) -> Result<(), String> {
+pub async fn save_profile(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    profile: ConnectionProfile,
+) -> Result<(), String> {
     let mut config = state.get_config(&app).await?;
 
     if let Some(existing) = config.profiles.iter_mut().find(|p| p.id == profile.id) {
@@ -70,7 +77,11 @@ pub async fn save_profile(app: AppHandle, state: State<'_, AppState>, profile: C
 }
 
 #[tauri::command]
-pub async fn delete_profile(app: AppHandle, state: State<'_, AppState>, profile_id: String) -> Result<(), String> {
+pub async fn delete_profile(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    profile_id: String,
+) -> Result<(), String> {
     let mut config = state.get_config(&app).await?;
     config.profiles.retain(|p| p.id != profile_id);
     if config.last_profile_id.as_deref() == Some(&profile_id) {
@@ -80,7 +91,10 @@ pub async fn delete_profile(app: AppHandle, state: State<'_, AppState>, profile_
 }
 
 #[tauri::command]
-pub async fn get_last_profile(app: AppHandle, state: State<'_, AppState>) -> Result<Option<ConnectionProfile>, String> {
+pub async fn get_last_profile(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<ConnectionProfile>, String> {
     let config = state.get_config(&app).await?;
     let profile = config
         .last_profile_id
@@ -121,11 +135,9 @@ pub async fn detect_agent() -> Result<bool, String> {
 #[tauri::command]
 pub async fn list_agent_identities() -> Result<Vec<AgentIdentityInfo>, String> {
     let rt = tokio::runtime::Handle::current();
-    tokio::task::spawn_blocking(move || {
-        rt.block_on(ssh::list_agent_keys())
-    })
-    .await
-    .map_err(|e| format!("agent list failed: {e}"))?
+    tokio::task::spawn_blocking(move || rt.block_on(ssh::list_agent_keys()))
+        .await
+        .map_err(|e| format!("agent list failed: {e}"))?
 }
 
 // connection
@@ -187,11 +199,17 @@ async fn probe_host_inner(
         .map(|t| t / 1000.0);
 
     let (memory_used, memory_total) = parse_memory(
-        &session.exec_command("free -m | awk 'NR==2{print $2, $3}'").await.unwrap_or_default(),
+        &session
+            .exec_command("free -m | awk 'NR==2{print $2, $3}'")
+            .await
+            .unwrap_or_default(),
     );
 
     let (disk_used, disk_total) = parse_disk(
-        &session.exec_command("df -h / | awk 'NR==2{print $2, $5}'").await.unwrap_or_default(),
+        &session
+            .exec_command("df -h / | awk 'NR==2{print $2, $5}'")
+            .await
+            .unwrap_or_default(),
     );
 
     let _ = session.disconnect().await;
@@ -245,15 +263,16 @@ pub async fn connect_ssh(
         channel_count: 0,
     };
 
-    state.ssh_sessions.lock().await.insert(session_id.clone(), entry);
+    state
+        .ssh_sessions
+        .lock()
+        .await
+        .insert(session_id.clone(), entry);
     Ok(session_id)
 }
 
 #[tauri::command]
-pub async fn disconnect_ssh(
-    state: State<'_, AppState>,
-    session_id: String,
-) -> Result<(), String> {
+pub async fn disconnect_ssh(state: State<'_, AppState>, session_id: String) -> Result<(), String> {
     // remove all channels belonging to this session
     let mut channels = state.channels.lock().await;
     let to_remove: Vec<String> = channels
@@ -289,14 +308,13 @@ pub async fn open_shell(
     rows: u32,
 ) -> Result<String, String> {
     let mut sessions = state.ssh_sessions.lock().await;
-    let entry = sessions
-        .get_mut(&session_id)
-        .ok_or("Session not found")?;
+    let entry = sessions.get_mut(&session_id).ok_or("Session not found")?;
 
     let channel = entry.ssh.open_shell(cols, rows).await?;
     let channel_id = uuid::Uuid::new_v4().to_string();
 
-    let input_tx = ssh::spawn_channel_io(app, session_id.clone(), channel_id.clone(), channel);
+    let (input_tx, start_signal) =
+        ssh::spawn_channel_io(app, session_id.clone(), channel_id.clone(), channel);
     entry.channel_count += 1;
 
     let active = ActiveChannel {
@@ -305,10 +323,14 @@ pub async fn open_shell(
             session_id: session_id.clone(),
             input_tx,
         },
-        start_signal: None,
+        start_signal: Some(start_signal),
     };
     drop(sessions); // release ssh lock before acquiring channels lock
-    state.channels.lock().await.insert(channel_id.clone(), active);
+    state
+        .channels
+        .lock()
+        .await
+        .insert(channel_id.clone(), active);
 
     Ok(channel_id)
 }
@@ -338,9 +360,8 @@ pub async fn open_ssh_shell(
         let channel = entry.ssh.open_shell(cols, rows).await?;
         let channel_id = uuid::Uuid::new_v4().to_string();
 
-        let input_tx = ssh::spawn_channel_io(
-            app, sid.clone(), channel_id.clone(), channel,
-        );
+        let (input_tx, start_signal) =
+            ssh::spawn_channel_io(app, sid.clone(), channel_id.clone(), channel);
         entry.channel_count += 1;
 
         let active = ActiveChannel {
@@ -349,10 +370,14 @@ pub async fn open_ssh_shell(
                 session_id: sid.clone(),
                 input_tx,
             },
-            start_signal: None,
+            start_signal: Some(start_signal),
         };
         drop(sessions);
-        state.channels.lock().await.insert(channel_id.clone(), active);
+        state
+            .channels
+            .lock()
+            .await
+            .insert(channel_id.clone(), active);
 
         return Ok(OpenSshShellResult {
             channel_id,
@@ -412,9 +437,8 @@ pub async fn open_ssh_shell(
     let channel = ssh_session.open_shell(cols, rows).await?;
     let channel_id = uuid::Uuid::new_v4().to_string();
 
-    let input_tx = ssh::spawn_channel_io(
-        app, session_id.clone(), channel_id.clone(), channel,
-    );
+    let (input_tx, start_signal) =
+        ssh::spawn_channel_io(app, session_id.clone(), channel_id.clone(), channel);
 
     let entry = SshSessionEntry {
         session_id: session_id.clone(),
@@ -423,7 +447,11 @@ pub async fn open_ssh_shell(
         channel_count: 1,
     };
 
-    state.ssh_sessions.lock().await.insert(session_id.clone(), entry);
+    state
+        .ssh_sessions
+        .lock()
+        .await
+        .insert(session_id.clone(), entry);
     state.channels.lock().await.insert(
         channel_id.clone(),
         ActiveChannel {
@@ -432,7 +460,7 @@ pub async fn open_ssh_shell(
                 session_id: session_id.clone(),
                 input_tx,
             },
-            start_signal: None,
+            start_signal: Some(start_signal),
         },
     );
 
@@ -483,25 +511,29 @@ pub async fn open_local_shell(
 
 /// tell a local shell "the frontend listener is ready, start pushing output"
 #[tauri::command]
-pub async fn channel_ready(
-    state: State<'_, AppState>,
-    channel_id: String,
-) -> Result<(), String> {
+pub async fn channel_ready(state: State<'_, AppState>, channel_id: String) -> Result<(), String> {
+    crate::ssh::ssh_debug_log(format!("channel_ready invoked channel={channel_id}"));
     let mut channels = state.channels.lock().await;
     if let Some(channel) = channels.get_mut(&channel_id) {
         if let Some(signal) = channel.start_signal.take() {
+            crate::ssh::ssh_debug_log(format!("channel_ready signaled channel={channel_id}"));
             let _ = signal.send(());
+        } else {
+            crate::ssh::ssh_debug_log(format!(
+                "channel_ready no_start_signal channel={channel_id}"
+            ));
         }
+    } else {
+        crate::ssh::ssh_debug_log(format!(
+            "channel_ready missing_channel channel={channel_id}"
+        ));
     }
     Ok(())
 }
 
 /// close any channel (ssh or local) - just needs channel_id
 #[tauri::command]
-pub async fn close_shell(
-    state: State<'_, AppState>,
-    channel_id: String,
-) -> Result<(), String> {
+pub async fn close_shell(state: State<'_, AppState>, channel_id: String) -> Result<(), String> {
     let mut channels = state.channels.lock().await;
     if let Some(channel) = channels.remove(&channel_id) {
         let _ = channel.input_tx().send(ChannelInput::Close).await;
@@ -525,9 +557,7 @@ pub async fn write_to_shell(
     data: String,
 ) -> Result<(), String> {
     let channels = state.channels.lock().await;
-    let channel = channels
-        .get(&channel_id)
-        .ok_or("Channel not found")?;
+    let channel = channels.get(&channel_id).ok_or("Channel not found")?;
 
     channel
         .input_tx()
@@ -545,9 +575,7 @@ pub async fn resize_shell(
     rows: u32,
 ) -> Result<(), String> {
     let channels = state.channels.lock().await;
-    let channel = channels
-        .get(&channel_id)
-        .ok_or("Channel not found")?;
+    let channel = channels.get(&channel_id).ok_or("Channel not found")?;
 
     channel
         .input_tx()
@@ -557,14 +585,9 @@ pub async fn resize_shell(
 }
 
 #[tauri::command]
-pub async fn ping_session(
-    state: State<'_, AppState>,
-    session_id: String,
-) -> Result<u64, String> {
+pub async fn ping_session(state: State<'_, AppState>, session_id: String) -> Result<u64, String> {
     let mut sessions = state.ssh_sessions.lock().await;
-    let entry = sessions
-        .get_mut(&session_id)
-        .ok_or("Session not found")?;
+    let entry = sessions.get_mut(&session_id).ok_or("Session not found")?;
     entry.ssh.ping().await
 }
 
@@ -621,13 +644,15 @@ pub async fn fetch_system_stats(
     session_id: String,
 ) -> Result<SystemStats, String> {
     let mut sessions = state.ssh_sessions.lock().await;
-    let entry = sessions
-        .get_mut(&session_id)
-        .ok_or("Session not found")?;
+    let entry = sessions.get_mut(&session_id).ok_or("Session not found")?;
 
     // single round-trip, also doubles as latency measurement
     let start = Instant::now();
-    let raw = entry.ssh.exec_command(STATS_SCRIPT).await.unwrap_or_default();
+    let raw = entry
+        .ssh
+        .exec_command(STATS_SCRIPT)
+        .await
+        .unwrap_or_default();
     let latency_ms = start.elapsed().as_millis() as u64;
 
     // parse tagged lines
@@ -644,7 +669,9 @@ pub async fn fetch_system_stats(
         let line = line.trim();
         if let Some(val) = line.strip_prefix("TEMP:") {
             if let Ok(t) = val.trim().parse::<f32>() {
-                if t >= 0.0 { cpu_temp = Some(t / 1000.0); }
+                if t >= 0.0 {
+                    cpu_temp = Some(t / 1000.0);
+                }
             }
         } else if let Some(val) = line.strip_prefix("MEM:") {
             let parts: Vec<&str> = val.trim().split_whitespace().collect();

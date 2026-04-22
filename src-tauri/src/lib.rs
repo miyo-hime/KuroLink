@@ -39,8 +39,10 @@ pub fn run() {
             commands::get_launch_path,
         ])
         .setup(|app| {
-            // restore window state from our portable config
             let handle = app.handle().clone();
+            let _ = ssh::init_ssh_debug(&handle);
+
+            // restore window state from our portable config
             if let Ok(cfg) = config::load_config(&handle) {
                 if let Some(ws) = cfg.window_state {
                     if let Some(win) = app.get_webview_window("main") {
@@ -74,7 +76,13 @@ pub fn run() {
                     (pos.x, pos.y, size.width, size.height)
                 };
 
-                let ws = WindowState { x, y, width, height, maximized };
+                let ws = WindowState {
+                    x,
+                    y,
+                    width,
+                    height,
+                    maximized,
+                };
                 let handle = window.app_handle().clone();
 
                 // save synchronously - we're closing, no rush

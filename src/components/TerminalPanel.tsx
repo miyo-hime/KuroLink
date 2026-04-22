@@ -21,6 +21,8 @@ interface Props {
 const DEFAULT_FONT_SIZE = 14;
 const MIN_FONT_SIZE = 10;
 const MAX_FONT_SIZE = 24;
+const ESC = "\u001b";
+const ST = `${ESC}\\`;
 
 const TERMINAL_THEME = {
   background: "#06060c",
@@ -99,6 +101,28 @@ export default function TerminalPanel({ channelId, active, searchVisible, onSear
 
     termRef.current = term;
     fitRef.current = fitAddon;
+
+    const sendTerminalReply = (data: string) => {
+      writeToShell(channelId, data).catch(() => {});
+    };
+
+    const parserDisposables = [
+      term.parser.registerCsiHandler({ final: "c" }, (params) => {
+        if ((params[0] ?? 0) !== 0) return false;
+        sendTerminalReply(`${ESC}[?1;2c`);
+        return true;
+      }),
+      term.parser.registerCsiHandler({ prefix: ">", final: "q" }, (params) => {
+        if ((params[0] ?? 0) !== 0) return false;
+        sendTerminalReply(`${ESC}P>|KuroLink (${navigator.userAgent})${ST}`);
+        return true;
+      }),
+      term.parser.registerCsiHandler({ prefix: "?", intermediates: "$", final: "p" }, (params) => {
+        if (params[0] !== 2026) return false;
+        sendTerminalReply(`${ESC}[?2026;0$y`);
+        return true;
+      }),
+    ];
 
     // unified key handler - clipboard, zoom, search toggle
     term.attachCustomKeyEventHandler((ev: KeyboardEvent) => {
@@ -223,6 +247,7 @@ export default function TerminalPanel({ channelId, active, searchVisible, onSear
       onBellDisposable.dispose();
       unlistenOutput?.();
       unlistenClosed?.();
+      parserDisposables.forEach((d) => d.dispose());
       term.dispose();
     };
   }, [channelId]); // eslint-disable-line react-hooks/exhaustive-deps
