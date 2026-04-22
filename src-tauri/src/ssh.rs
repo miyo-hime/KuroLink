@@ -1,16 +1,117 @@
 use russh::client;
 use russh::keys::agent::client::{AgentClient, AgentStream};
-use russh::keys::{load_secret_key, PrivateKeyWithHashAlg};
-use russh::{Channel, ChannelMsg, Disconnect};
 use russh::keys::ssh_key::PublicKey;
+use russh::keys::{load_secret_key, PrivateKeyWithHashAlg};
+use russh::{Channel, ChannelMsg, Disconnect, Pty};
 use serde::{Deserialize, Serialize};
+use std::fs::OpenOptions;
+use std::io::Write as _;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::OnceLock;
 use std::time::Instant;
 use tauri::{AppHandle, Emitter};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
-// handler
+fn preferred_term() -> String {
+    std::env::var("TERM")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "xterm-256color".to_string())
+}
+
+fn default_pty_modes() -> Vec<(Pty, u32)> {
+    vec![
+        (Pty::VINTR, 3),
+        (Pty::VQUIT, 28),
+        (Pty::VERASE, 127),
+        (Pty::VKILL, 21),
+        (Pty::VEOF, 4),
+        (Pty::VSTART, 17),
+        (Pty::VSTOP, 19),
+        (Pty::VSUSP, 26),
+        (Pty::ICRNL, 1),
+        (Pty::IXON, 1),
+        (Pty::ISIG, 1),
+        (Pty::ICANON, 1),
+        (Pty::IEXTEN, 1),
+        (Pty::ECHO, 1),
+        (Pty::ECHOE, 1),
+        (Pty::ECHOK, 1),
+        (Pty::OPOST, 1),
+        (Pty::ONLCR, 1),
+        (Pty::CS8, 1),
+        // OpenSSH sends a real tty snapshot. `&[]` turned out to be a great way to annoy Claude.
+        (Pty::TTY_OP_ISPEED, 38_400),
+        (Pty::TTY_OP_OSPEED, 38_400),
+    ]
+}
+
+static SSH_DEBUG_ENABLED: AtomicBool = AtomicBool::new(false);
+static SSH_DEBUG_LOG_PATH: OnceLock<PathBuf> = OnceLock::new();
+
+pub(crate) fn init_ssh_debug(app: &AppHandle) -> Result<(), String> {
+    let config = crate::config::load_config(app)?;
+    SSH_DEBUG_ENABLED.store(config.ssh_debug, Ordering::Relaxed);
+
+    let path = crate::config::config_path(app)?
+        .parent()
+        .ok_or_else(|| "Failed to resolve config directory".to_string())?
+        .join("kurolink-ssh-debug.log");
+    let _ = SSH_DEBUG_LOG_PATH.set(path);
+
+    Ok(())
+}
+
+pub(crate) fn ssh_debug_enabled() -> bool {
+    SSH_DEBUG_ENABLED.load(Ordering::Relaxed)
+}
+
+pub(crate) fn ssh_debug_log(message: impl AsRef<str>) {
+    if !ssh_debug_enabled() {
+        return;
+    }
+
+    let Some(path) = SSH_DEBUG_LOG_PATH.get() else {
+        return;
+    };
+    let timestamp = match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+        Ok(duration) => duration.as_millis(),
+        Err(_) => 0,
+    };
+
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(file, "[{timestamp}] {}", message.as_ref());
+    }
+}
+
+fn debug_escape_bytes(bytes: &[u8]) -> String {
+    const MAX_BYTES: usize = 160;
+
+    let mut rendered = String::new();
+    for &byte in bytes.iter().take(MAX_BYTES) {
+        match byte {
+            b'\r' => rendered.push_str("\\r"),
+            b'\n' => rendered.push_str("\\n"),
+            b'\t' => rendered.push_str("\\t"),
+            0x1b => rendered.push_str("\\e"),
+            0x20..=0x7e => rendered.push(byte as char),
+            _ => {
+                let _ = std::fmt::Write::write_fmt(&mut rendered, format_args!("\\x{byte:02x}"));
+            }
+        }
+    }
+
+    if bytes.len() > MAX_BYTES {
+        let _ = std::fmt::Write::write_fmt(
+            &mut rendered,
+            format_args!("...(truncated {} bytes)", bytes.len() - MAX_BYTES),
+        );
+    }
+
+    rendered
+}
 
 pub struct SshHandler {
     known_hosts_path: PathBuf,
@@ -36,7 +137,9 @@ impl SshHandler {
                 continue;
             }
             // format: hostname algorithm base64key [comment]
-            let Some((entry_host, remaining)) = line.split_once(' ') else { continue };
+            let Some((entry_host, remaining)) = line.split_once(' ') else {
+                continue;
+            };
 
             if entry_host == host {
                 // found it, check if key matches
@@ -90,8 +193,6 @@ impl client::Handler for SshHandler {
     }
 }
 
-// agent
-
 type DynAgent = AgentClient<Box<dyn AgentStream + Send + Unpin + 'static>>;
 
 /// try all available agent sources on this platform and return the first
@@ -120,11 +221,9 @@ pub async fn connect_agent() -> Result<DynAgent, String> {
         }
 
         if agents.is_empty() {
-            return Err(
-                "no SSH agent found - start OpenSSH Authentication Agent \
+            return Err("no SSH agent found - start OpenSSH Authentication Agent \
                  service or Pageant"
-                    .into(),
-            );
+                .into());
         }
 
         // prefer the first agent that actually has keys loaded
@@ -163,19 +262,20 @@ pub struct AgentIdentityInfo {
 /// list keys from the running SSH agent
 pub async fn list_agent_keys() -> Result<Vec<AgentIdentityInfo>, String> {
     let mut agent = connect_agent().await?;
-    let keys = agent.request_identities().await
+    let keys = agent
+        .request_identities()
+        .await
         .map_err(|e| format!("failed to list agent keys: {e}"))?;
 
-    Ok(keys.iter().map(|k| {
-        AgentIdentityInfo {
+    Ok(keys
+        .iter()
+        .map(|k| AgentIdentityInfo {
             key_type: k.algorithm().to_string(),
             fingerprint: k.fingerprint(Default::default()).to_string(),
             comment: k.comment().to_string(),
-        }
-    }).collect())
+        })
+        .collect())
 }
-
-// session
 
 pub struct SshSession {
     handle: client::Handle<SshHandler>,
@@ -200,20 +300,19 @@ impl SshSession {
         };
 
         let pp_ref = passphrase.as_deref();
-        let key = load_secret_key(&expanded_path, pp_ref)
-            .map_err(|e| {
-                let msg = format!("{e}");
-                let lower = msg.to_lowercase();
-                if pp_ref.is_none()
-                    && (lower.contains("encrypt")
-                        || lower.contains("passphrase")
-                        || lower.contains("decrypt"))
-                {
-                    "ENCRYPTED_KEY".to_string()
-                } else {
-                    format!("Failed to load SSH key '{}': {e}", expanded_path)
-                }
-            })?;
+        let key = load_secret_key(&expanded_path, pp_ref).map_err(|e| {
+            let msg = format!("{e}");
+            let lower = msg.to_lowercase();
+            if pp_ref.is_none()
+                && (lower.contains("encrypt")
+                    || lower.contains("passphrase")
+                    || lower.contains("decrypt"))
+            {
+                "ENCRYPTED_KEY".to_string()
+            } else {
+                format!("Failed to load SSH key '{}': {e}", expanded_path)
+            }
+        })?;
 
         let config = Arc::new(client::Config {
             inactivity_timeout: Some(std::time::Duration::from_secs(30)),
@@ -222,8 +321,8 @@ impl SshSession {
             ..Default::default()
         });
 
-        let known_hosts = crate::config::known_hosts_path()
-            .unwrap_or_else(|_| PathBuf::from(".ssh/known_hosts"));
+        let known_hosts =
+            crate::config::known_hosts_path().unwrap_or_else(|_| PathBuf::from(".ssh/known_hosts"));
         let handler = SshHandler {
             known_hosts_path: known_hosts,
             host: host.to_string(),
@@ -256,11 +355,7 @@ impl SshSession {
     /// russh's Signer trait returns impl Future without + Send, so the auth
     /// future can't cross a tokio::spawn boundary. block_on with the current
     /// runtime handle keeps everything on the same executor.
-    pub async fn connect_with_agent(
-        host: &str,
-        port: u16,
-        username: &str,
-    ) -> Result<Self, String> {
+    pub async fn connect_with_agent(host: &str, port: u16, username: &str) -> Result<Self, String> {
         let host = host.to_owned();
         let port = port;
         let username = username.to_owned();
@@ -269,16 +364,16 @@ impl SshSession {
         tokio::task::spawn_blocking(move || {
             rt.block_on(async move {
                 let mut agent = connect_agent().await?;
-                let keys = agent.request_identities().await
+                let keys = agent
+                    .request_identities()
+                    .await
                     .map_err(|e| format!("failed to list agent keys: {e}"))?;
 
                 if keys.is_empty() {
-                    return Err(
-                        "SSH agent is running but has no keys loaded. \
+                    return Err("SSH agent is running but has no keys loaded. \
                          Try running 'ssh-add' to add your key, or check \
                          that the correct agent is running"
-                            .to_string(),
-                    );
+                        .to_string());
                 }
 
                 let config = Arc::new(client::Config {
@@ -329,6 +424,11 @@ impl SshSession {
         cols: u32,
         rows: u32,
     ) -> Result<Channel<client::Msg>, String> {
+        let term = preferred_term();
+        let terminal_modes = default_pty_modes();
+        ssh_debug_log(format!(
+            "open_shell start term={term} cols={cols} rows={rows} modes={terminal_modes:?}"
+        ));
         let channel = self
             .handle
             .channel_open_session()
@@ -336,22 +436,16 @@ impl SshSession {
             .map_err(|e| format!("Failed to open channel: {e}"))?;
 
         channel
-            .request_pty(
-                true,
-                "xterm-256color",
-                cols,
-                rows,
-                0,
-                0,
-                &[],
-            )
+            .request_pty(true, &term, cols, rows, 0, 0, &terminal_modes)
             .await
             .map_err(|e| format!("Failed to request PTY: {e}"))?;
+        ssh_debug_log("open_shell request_pty ok");
 
         channel
             .request_shell(true)
             .await
             .map_err(|e| format!("Failed to request shell: {e}"))?;
+        ssh_debug_log("open_shell request_shell ok");
 
         Ok(channel)
     }
@@ -400,8 +494,6 @@ impl SshSession {
     }
 }
 
-// channel io bridge
-
 pub enum ChannelInput {
     Data(Vec<u8>),
     Resize { cols: u32, rows: u32 },
@@ -415,30 +507,50 @@ pub fn spawn_channel_io(
     session_id: String,
     channel_id: String,
     mut channel: Channel<client::Msg>,
-) -> mpsc::Sender<ChannelInput> {
+) -> (mpsc::Sender<ChannelInput>, oneshot::Sender<()>) {
     let (tx, mut rx) = mpsc::channel::<ChannelInput>(256);
+    let (start_tx, start_rx) = oneshot::channel::<()>();
+    ssh_debug_log(format!(
+        "spawn_channel_io channel={channel_id} session={session_id}"
+    ));
 
     tokio::spawn(async move {
         let mut user_closed = false;
+        ssh_debug_log(format!("channel={channel_id} waiting_for_channel_ready"));
+        let _ = start_rx.await;
+        ssh_debug_log(format!("channel={channel_id} channel_ready_received"));
+
         loop {
             tokio::select! {
                 // data from remote -> frontend
                 msg = channel.wait() => {
                     match msg {
                         Some(ChannelMsg::Data { data }) => {
+                            ssh_debug_log(format!(
+                                "channel={channel_id} recv stdout len={} data={}",
+                                data.len(),
+                                debug_escape_bytes(&data),
+                            ));
                             let text = String::from_utf8_lossy(&data).to_string();
                             let event = format!("terminal-output-{channel_id}");
                             let _ = app.emit(&event, text);
                         }
                         Some(ChannelMsg::ExtendedData { data, .. }) => {
+                            ssh_debug_log(format!(
+                                "channel={channel_id} recv stderr len={} data={}",
+                                data.len(),
+                                debug_escape_bytes(&data),
+                            ));
                             let text = String::from_utf8_lossy(&data).to_string();
                             let event = format!("terminal-output-{channel_id}");
                             let _ = app.emit(&event, text);
                         }
                         Some(ChannelMsg::ExitStatus { .. }) | Some(ChannelMsg::Eof) => {
+                            ssh_debug_log(format!("channel={channel_id} recv eof_or_exit_status"));
                             // keep going
                         }
                         Some(ChannelMsg::Close) | None => {
+                            ssh_debug_log(format!("channel={channel_id} recv close user_closed={user_closed}"));
                             let event = format!("terminal-closed-{channel_id}");
                             let _ = app.emit(&event, ());
                             if !user_closed {
@@ -448,13 +560,20 @@ pub fn spawn_channel_io(
                             }
                             break;
                         }
-                        _ => {}
+                        Some(other) => {
+                            ssh_debug_log(format!("channel={channel_id} recv other={other:?}"));
+                        }
                     }
                 }
                 // input from frontend -> ssh
                 input = rx.recv() => {
                     match input {
                         Some(ChannelInput::Data(bytes)) => {
+                            ssh_debug_log(format!(
+                                "channel={channel_id} send stdin len={} data={}",
+                                bytes.len(),
+                                debug_escape_bytes(&bytes),
+                            ));
                             if let Err(e) = channel.data(&bytes[..]).await {
                                 log::error!("Failed to write to channel: {e}");
                                 let err_event = format!("session-error-{session_id}");
@@ -463,10 +582,12 @@ pub fn spawn_channel_io(
                             }
                         }
                         Some(ChannelInput::Resize { cols, rows }) => {
+                            ssh_debug_log(format!("channel={channel_id} resize cols={cols} rows={rows}"));
                             let _ = channel.window_change(cols, rows, 0, 0).await;
                         }
                         Some(ChannelInput::Close) | None => {
                             user_closed = true;
+                            ssh_debug_log(format!("channel={channel_id} close_requested"));
                             let _ = channel.close().await;
                             break;
                         }
@@ -476,5 +597,25 @@ pub fn spawn_channel_io(
         }
     });
 
-    tx
+    (tx, start_tx)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::default_pty_modes;
+    use russh::Pty;
+
+    #[test]
+    fn default_pty_modes_include_signal_and_line_discipline_flags() {
+        let modes = default_pty_modes();
+
+        assert!(modes.contains(&(Pty::VINTR, 3)));
+        assert!(modes.contains(&(Pty::VSUSP, 26)));
+        assert!(modes.contains(&(Pty::ISIG, 1)));
+        assert!(modes.contains(&(Pty::ICANON, 1)));
+        assert!(modes.contains(&(Pty::ECHO, 1)));
+        assert!(modes.contains(&(Pty::TTY_OP_ISPEED, 38_400)));
+        assert!(modes.contains(&(Pty::TTY_OP_OSPEED, 38_400)));
+        assert!(!modes.iter().any(|(mode, _)| *mode == Pty::TTY_OP_END));
+    }
 }

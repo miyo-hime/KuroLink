@@ -152,13 +152,19 @@ pub fn fetch_local_system_stats() -> crate::commands::SystemStats {
         .iter()
         .find(|d| {
             // on windows, find C: drive
-            d.mount_point().to_str().map_or(false, |p| p.starts_with("C:") || p == "/")
+            d.mount_point()
+                .to_str()
+                .map_or(false, |p| p.starts_with("C:") || p == "/")
         })
         .or_else(|| disks.iter().next())
         .map(|d| {
             let total = d.total_space() as f64 / (1024.0 * 1024.0 * 1024.0);
             let used = (d.total_space() - d.available_space()) as f64 / (1024.0 * 1024.0 * 1024.0);
-            let percent = if total > 0.0 { (used / total) * 100.0 } else { 0.0 };
+            let percent = if total > 0.0 {
+                (used / total) * 100.0
+            } else {
+                0.0
+            };
             (total as f32, percent as f32)
         })
         .unwrap_or((0.0, 0.0));

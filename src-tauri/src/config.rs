@@ -51,7 +51,13 @@ pub struct WindowState {
 
 impl Default for WindowState {
     fn default() -> Self {
-        Self { x: -1, y: -1, width: 1100, height: 950, maximized: false }
+        Self {
+            x: -1,
+            y: -1,
+            width: 1100,
+            height: 950,
+            maximized: false,
+        }
     }
 }
 
@@ -61,12 +67,14 @@ pub struct AppConfig {
     pub last_profile_id: Option<String>,
     #[serde(default)]
     pub window_state: Option<WindowState>,
+    #[serde(default)]
+    pub ssh_debug: bool,
 }
 
 pub fn config_path(_app: &AppHandle) -> Result<PathBuf, String> {
-    let exe = std::env::current_exe()
-        .map_err(|e| format!("Failed to get exe path: {e}"))?;
-    let dir = exe.parent()
+    let exe = std::env::current_exe().map_err(|e| format!("Failed to get exe path: {e}"))?;
+    let dir = exe
+        .parent()
         .ok_or_else(|| "Failed to get exe directory".to_string())?;
     Ok(dir.join("kurolink.json"))
 }
@@ -76,10 +84,8 @@ pub fn load_config(app: &AppHandle) -> Result<AppConfig, String> {
     if !path.exists() {
         return Ok(AppConfig::default());
     }
-    let data = fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read config: {e}"))?;
-    serde_json::from_str(&data)
-        .map_err(|e| format!("Failed to parse config: {e}"))
+    let data = fs::read_to_string(&path).map_err(|e| format!("Failed to read config: {e}"))?;
+    serde_json::from_str(&data).map_err(|e| format!("Failed to parse config: {e}"))
 }
 
 // passphrase encryption - AES-256-GCM with a machine-derived key.
@@ -100,7 +106,8 @@ pub fn encrypt_passphrase(app: &AppHandle, plaintext: &str) -> Result<String, St
     let key = derive_key(app)?;
     let rng = SystemRandom::new();
     let mut nonce_bytes = [0u8; 12];
-    rng.fill(&mut nonce_bytes).map_err(|e| format!("rng failed: {e}"))?;
+    rng.fill(&mut nonce_bytes)
+        .map_err(|e| format!("rng failed: {e}"))?;
     let nonce = aead::Nonce::assume_unique_for_key(nonce_bytes);
 
     let mut in_out = plaintext.as_bytes().to_vec();
@@ -131,18 +138,15 @@ pub fn decrypt_passphrase(app: &AppHandle, encrypted: &str) -> Result<String, St
         .open_in_place(nonce, aead::Aad::empty(), &mut in_out)
         .map_err(|_| "decryption failed - wrong key or corrupted data".to_string())?;
 
-    String::from_utf8(plaintext.to_vec())
-        .map_err(|e| format!("passphrase is not valid utf-8: {e}"))
+    String::from_utf8(plaintext.to_vec()).map_err(|e| format!("passphrase is not valid utf-8: {e}"))
 }
 
 pub fn save_config(app: &AppHandle, config: &AppConfig) -> Result<(), String> {
     let path = config_path(app)?;
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create config dir: {e}"))?;
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create config dir: {e}"))?;
     }
     let data = serde_json::to_string_pretty(config)
         .map_err(|e| format!("Failed to serialize config: {e}"))?;
-    fs::write(&path, data)
-        .map_err(|e| format!("Failed to write config: {e}"))
+    fs::write(&path, data).map_err(|e| format!("Failed to write config: {e}"))
 }
