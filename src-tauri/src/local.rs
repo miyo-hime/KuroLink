@@ -1,6 +1,9 @@
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+use std::process::Command as ProcessCommand;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{mpsc, oneshot};
 
@@ -9,18 +12,158 @@ use crate::ssh::{decode_utf8_chunk, finish_utf8_chunk, ChannelInput};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum LocalShellType {
+    #[serde(rename = "powershell")]
     PowerShell,
     Cmd,
     Wsl,
+    Nu,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalShellInfo {
+    pub id: String,
+    pub label: String,
+    pub short_label: String,
+    pub subtitle: String,
+    pub detected: bool,
+    pub available: bool,
 }
 
 impl LocalShellType {
-    fn command(&self) -> CommandBuilder {
-        match self {
-            LocalShellType::PowerShell => CommandBuilder::new("powershell.exe"),
-            LocalShellType::Cmd => CommandBuilder::new("cmd.exe"),
-            LocalShellType::Wsl => CommandBuilder::new("wsl.exe"),
+    pub fn from_id(id: &str) -> Option<Self> {
+        match id {
+            "powershell" => Some(LocalShellType::PowerShell),
+            "cmd" => Some(LocalShellType::Cmd),
+            "wsl" => Some(LocalShellType::Wsl),
+            "nu" => Some(LocalShellType::Nu),
+            _ => None,
         }
+    }
+
+    fn all() -> [Self; 4] {
+        [
+            LocalShellType::PowerShell,
+            LocalShellType::Cmd,
+            LocalShellType::Wsl,
+            LocalShellType::Nu,
+        ]
+    }
+
+    fn id(&self) -> &'static str {
+        match self {
+            LocalShellType::PowerShell => "powershell",
+            LocalShellType::Cmd => "cmd",
+            LocalShellType::Wsl => "wsl",
+            LocalShellType::Nu => "nu",
+        }
+    }
+
+    fn label(&self) -> &'static str {
+        match self {
+            LocalShellType::PowerShell => "PowerShell",
+            LocalShellType::Cmd => "Command Prompt",
+            LocalShellType::Wsl => "WSL",
+            LocalShellType::Nu => "Nushell",
+        }
+    }
+
+    fn short_label(&self) -> &'static str {
+        match self {
+            LocalShellType::PowerShell => "PS",
+            LocalShellType::Cmd => "CMD",
+            LocalShellType::Wsl => "WSL",
+            LocalShellType::Nu => "NU",
+        }
+    }
+
+    fn subtitle(&self) -> &'static str {
+        match self {
+            LocalShellType::PowerShell => "POWERSHELL",
+            LocalShellType::Cmd => "PROMPT",
+            LocalShellType::Wsl => "LINUX",
+            LocalShellType::Nu => "NUSHELL",
+        }
+    }
+
+    fn is_detected_shell(&self) -> bool {
+        matches!(self, LocalShellType::Wsl | LocalShellType::Nu)
+    }
+
+    fn executable(&self) -> &'static str {
+        match self {
+            LocalShellType::PowerShell => "powershell.exe",
+            LocalShellType::Cmd => "cmd.exe",
+            LocalShellType::Wsl => "wsl.exe",
+            LocalShellType::Nu if cfg!(windows) => "nu.exe",
+            LocalShellType::Nu => "nu",
+        }
+    }
+
+    fn command(&self) -> CommandBuilder {
+        CommandBuilder::new(self.executable())
+    }
+
+    pub fn available(&self) -> bool {
+        match self {
+            LocalShellType::PowerShell | LocalShellType::Cmd => true,
+            LocalShellType::Wsl => wsl_has_distro(),
+            LocalShellType::Nu => command_succeeds(self.executable(), &["--version"]),
+        }
+    }
+
+    fn info(&self) -> LocalShellInfo {
+        LocalShellInfo {
+            id: self.id().to_string(),
+            label: self.label().to_string(),
+            short_label: self.short_label().to_string(),
+            subtitle: self.subtitle().to_string(),
+            detected: self.is_detected_shell(),
+            available: self.available(),
+        }
+    }
+}
+
+pub fn detect_local_shells() -> Vec<LocalShellInfo> {
+    LocalShellType::all()
+        .iter()
+        .map(LocalShellType::info)
+        .collect()
+}
+
+fn command_succeeds(command: &str, args: &[&str]) -> bool {
+    let mut cmd = hidden_probe_command(command);
+    cmd.args(args)
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+fn wsl_has_distro() -> bool {
+    let output = match hidden_probe_command("wsl.exe").args(["-l", "-q"]).output() {
+        Ok(output) if output.status.success() => output,
+        _ => return false,
+    };
+    let stdout = decode_shell_probe_output(&output.stdout);
+    stdout.lines().any(|line| !line.trim().is_empty())
+}
+
+fn hidden_probe_command(command: &str) -> ProcessCommand {
+    let mut cmd = ProcessCommand::new(command);
+    #[cfg(windows)]
+    cmd.creation_flags(0x08000000);
+    cmd
+}
+
+fn decode_shell_probe_output(bytes: &[u8]) -> String {
+    if bytes.len() > 1 && bytes[1] == 0 {
+        let units: Vec<u16> = bytes
+            .chunks_exact(2)
+            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+            .collect();
+        String::from_utf16_lossy(&units)
+    } else {
+        String::from_utf8_lossy(bytes).replace('\0', "")
     }
 }
 

@@ -902,6 +902,14 @@
   opacity: 0.6;
 }
 
+.cmd-switch-missing {
+  border-left-color: var(--accent-secondary);
+}
+
+.cmd-switch-missing .cmd-switch-sub {
+  color: var(--accent-secondary);
+}
+
 /* status led */
 .cmd-switch-indicator {
   width: 8px;

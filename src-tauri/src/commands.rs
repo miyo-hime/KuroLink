@@ -3,7 +3,7 @@ use std::time::Instant;
 use tauri::{AppHandle, State};
 
 use crate::config::ConnectionProfile;
-use crate::local::{self, LocalShellType};
+use crate::local::{self, LocalShellInfo, LocalShellType};
 use crate::ssh::{self, AgentIdentityInfo, ChannelInput, SshSession};
 use crate::state::{ActiveChannel, AppState, ChannelBackend, SshSessionEntry};
 
@@ -468,7 +468,12 @@ pub async fn open_ssh_shell(
     })
 }
 
-/// spawn a local shell (powershell, cmd, wsl)
+#[tauri::command]
+pub async fn detect_local_shells() -> Result<Vec<LocalShellInfo>, String> {
+    Ok(local::detect_local_shells())
+}
+
+/// spawn a local shell
 #[tauri::command]
 pub async fn open_local_shell(
     app: AppHandle,
@@ -478,12 +483,11 @@ pub async fn open_local_shell(
     rows: u32,
     cwd: Option<String>,
 ) -> Result<String, String> {
-    let shell = match shell_type.as_str() {
-        "powershell" => LocalShellType::PowerShell,
-        "cmd" => LocalShellType::Cmd,
-        "wsl" => LocalShellType::Wsl,
-        other => return Err(format!("unknown shell type: {other}")),
-    };
+    let shell = LocalShellType::from_id(&shell_type)
+        .ok_or_else(|| format!("unknown shell type: {shell_type}"))?;
+    if !shell.available() {
+        return Err(format!("shell unavailable: {shell_type}"));
+    }
 
     let channel_id = uuid::Uuid::new_v4().to_string();
     let (input_tx, start_signal) = local::spawn_local_shell(

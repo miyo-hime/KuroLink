@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
-import type { ConnectionProfile, HostStatus, AgentIdentityInfo, AuthMode } from "../lib/types";
+import { DEFAULT_LOCAL_SHELLS } from "../lib/types";
+import type { ConnectionProfile, HostStatus, AgentIdentityInfo, AuthMode, LocalShellId, LocalShellInfo } from "../lib/types";
 import {
   getProfiles,
   getLastProfile,
@@ -10,6 +11,7 @@ import {
   encryptPassphrase,
   decryptPassphrase,
   detectAgent,
+  detectLocalShells,
   listAgentIdentities,
 } from "../lib/ipc";
 import KuroLinkLogo from "./KuroLinkLogo";
@@ -21,7 +23,7 @@ interface Props {
     profileId: string,
     profile: ConnectionProfile,
   ) => void;
-  onLocalTerminal: (shellType: "powershell" | "cmd" | "wsl") => void;
+  onLocalTerminal: (shellType: LocalShellId) => void;
 }
 
 function formatTimestamp(ts: string): string {
@@ -64,6 +66,7 @@ export default function ConnectionScreen({ onConnected, onLocalTerminal }: Props
   const [savePass, setSavePass] = useState(false);
   const [agentAvailable, setAgentAvailable] = useState(false);
   const [agentKeys, setAgentKeys] = useState<AgentIdentityInfo[]>([]);
+  const [localShells, setLocalShells] = useState<LocalShellInfo[]>(DEFAULT_LOCAL_SHELLS);
 
   // Load profiles on mount, auto-probe last profile
   useEffect(() => {
@@ -73,6 +76,7 @@ export default function ConnectionScreen({ onConnected, onLocalTerminal }: Props
         setAgentAvailable(ok);
         if (ok) listAgentIdentities().then(setAgentKeys).catch(() => {});
       }).catch(() => {});
+      detectLocalShells().then(setLocalShells).catch(() => {});
 
       try {
         const allProfiles = await getProfiles();
@@ -585,21 +589,19 @@ export default function ConnectionScreen({ onConnected, onLocalTerminal }: Props
               </div>
               <div className="command-column">
                 <span className="command-column-label">LOCAL</span>
-                <button className="cmd-switch cmd-switch-local" onClick={() => onLocalTerminal("powershell")}>
-                  <span className="cmd-switch-indicator indicator-green" />
-                  <span className="cmd-switch-label">PS</span>
-                  <span className="cmd-switch-sub">POWERSHELL</span>
-                </button>
-                <button className="cmd-switch cmd-switch-local" onClick={() => onLocalTerminal("cmd")}>
-                  <span className="cmd-switch-indicator indicator-green" />
-                  <span className="cmd-switch-label">CMD</span>
-                  <span className="cmd-switch-sub">PROMPT</span>
-                </button>
-                <button className="cmd-switch cmd-switch-local" onClick={() => onLocalTerminal("wsl")}>
-                  <span className="cmd-switch-indicator indicator-green" />
-                  <span className="cmd-switch-label">WSL</span>
-                  <span className="cmd-switch-sub">LINUX</span>
-                </button>
+                {localShells.map((shell) => (
+                  <button
+                    key={shell.id}
+                    className={`cmd-switch cmd-switch-local${!shell.available ? " cmd-switch-missing" : ""}`}
+                    onClick={() => onLocalTerminal(shell.id)}
+                    disabled={!shell.available}
+                    title={shell.available ? shell.label : `${shell.label} not found`}
+                  >
+                    <span className={`cmd-switch-indicator${shell.available ? " indicator-green" : ""}`} />
+                    <span className="cmd-switch-label">{shell.shortLabel}</span>
+                    <span className="cmd-switch-sub">{shell.available ? shell.subtitle : "NOT FOUND"}</span>
+                  </button>
+                ))}
               </div>
             </div>
           </div>

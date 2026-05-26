@@ -27,6 +27,7 @@ pub fn run() {
             commands::disconnect_ssh,
             commands::open_shell,
             commands::open_ssh_shell,
+            commands::detect_local_shells,
             commands::open_local_shell,
             commands::channel_ready,
             commands::close_shell,

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useRef, useCallback } from "react";
-import type { ConnectionProfile } from "./lib/types";
+import type { ConnectionProfile, LocalShellId } from "./lib/types";
 import ConnectionScreen from "./components/ConnectionScreen";
 import "./App.css";
 
@@ -11,7 +11,7 @@ function App() {
   const [view, setView] = useState<AppView>("connect");
   const [initialSessionId, setInitialSessionId] = useState<string | null>(null);
   const [initialProfile, setInitialProfile] = useState<ConnectionProfile | null>(null);
-  const [initialLocalShell, setInitialLocalShell] = useState<"powershell" | "cmd" | "wsl" | null>(null);
+  const [initialLocalShell, setInitialLocalShell] = useState<LocalShellId | null>(null);
   const [glitching, setGlitching] = useState(false);
   const glitchRef = useRef<HTMLDivElement>(null);
 
@@ -26,7 +26,7 @@ function App() {
     setView("terminal");
   };
 
-  const handleLocalTerminal = useCallback((shellType: "powershell" | "cmd" | "wsl") => {
+  const handleLocalTerminal = useCallback((shellType: LocalShellId) => {
     setInitialSessionId(null);
     setInitialProfile(null);
     setInitialLocalShell(shellType);

@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState, useCallback, useRef, useMemo } from "react";
-import type { ConnectionProfile, TerminalTab, SystemStats, ConnectionStatus, MainMode, TabBackend } from "../lib/types";
+import { DEFAULT_LOCAL_SHELLS } from "../lib/types";
+import type { ConnectionProfile, TerminalTab, SystemStats, ConnectionStatus, MainMode, TabBackend, LocalShellId, LocalShellInfo } from "../lib/types";
 import { useKeyboardShortcuts } from "../lib/useKeyboardShortcuts";
 import {
   openShell,
@@ -9,6 +10,7 @@ import {
   disconnectSsh,
   fetchSystemStats,
   fetchLocalStats,
+  detectLocalShells,
   getProfiles,
   onSessionError,
 } from "../lib/ipc";
@@ -23,7 +25,7 @@ const TerminalPanel = lazy(() => import("./TerminalPanel"));
 interface Props {
   initialSessionId: string | null;
   initialProfile: ConnectionProfile | null;
-  initialLocalShell: "powershell" | "cmd" | "wsl" | null;
+  initialLocalShell: LocalShellId | null;
   onDisconnected: () => void;
 }
 
@@ -38,6 +40,7 @@ export default function MainView({ initialSessionId, initialProfile, initialLoca
   const [lostSessions, setLostSessions] = useState<Set<string>>(new Set());
   const [reconnecting, setReconnecting] = useState(false);
   const [profiles, setProfiles] = useState<ConnectionProfile[]>([]);
+  const [localShells, setLocalShells] = useState<LocalShellInfo[]>(DEFAULT_LOCAL_SHELLS);
 
   const prevStatsRef = useRef<SystemStats | null>(null);
   const tabCountRef = useRef(0);
@@ -73,6 +76,7 @@ export default function MainView({ initialSessionId, initialProfile, initialLoca
       createSshTabFromSession(initialSessionId, initialProfile);
     }
     getProfiles().then(setProfiles).catch(() => {});
+    detectLocalShells().then(setLocalShells).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // -- session error listeners: register/unregister as sessions come and go --
@@ -167,7 +171,7 @@ export default function MainView({ initialSessionId, initialProfile, initialLoca
   };
 
   // open a local terminal tab
-  const createLocalTab = useCallback(async (shellType: "powershell" | "cmd" | "wsl") => {
+  const createLocalTab = useCallback(async (shellType: LocalShellId) => {
     try {
       const channelId = await openLocalShell(shellType, 80, 24);
       tabCountRef.current += 1;
@@ -456,6 +460,7 @@ export default function MainView({ initialSessionId, initialProfile, initialLoca
           onNewTab={handleNewTab}
           onNewSshTab={createSshTabFromProfile}
           onNewLocalTab={createLocalTab}
+          localShells={localShells}
           onReorderTabs={handleReorderTabs}
         />
       </div>

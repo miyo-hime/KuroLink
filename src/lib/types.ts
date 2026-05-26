@@ -43,10 +43,28 @@ export interface SystemStats {
   latency_ms: number;
 }
 
+export type LocalShellId = "powershell" | "cmd" | "wsl" | "nu";
+
+export interface LocalShellInfo {
+  id: LocalShellId;
+  label: string;
+  shortLabel: string;
+  subtitle: string;
+  detected: boolean;
+  available: boolean;
+}
+
+export const DEFAULT_LOCAL_SHELLS: LocalShellInfo[] = [
+  { id: "powershell", label: "PowerShell", shortLabel: "PS", subtitle: "POWERSHELL", detected: false, available: true },
+  { id: "cmd", label: "Command Prompt", shortLabel: "CMD", subtitle: "PROMPT", detected: false, available: true },
+  { id: "wsl", label: "WSL", shortLabel: "WSL", subtitle: "LINUX", detected: true, available: false },
+  { id: "nu", label: "Nushell", shortLabel: "NU", subtitle: "NUSHELL", detected: true, available: false },
+];
+
 // tab backends - ssh or local, frontend doesn't care which for terminal IO
 export type TabBackend =
   | { kind: "ssh"; sessionId: string; profileId: string; profileName: string }
-  | { kind: "local"; shellType: "powershell" | "cmd" | "wsl" };
+  | { kind: "local"; shellType: LocalShellId };
 
 export interface TerminalTab {
   channelId: string;

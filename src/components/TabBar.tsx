@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import type { TerminalTab, ConnectionProfile } from "../lib/types";
+import type { TerminalTab, ConnectionProfile, LocalShellId, LocalShellInfo } from "../lib/types";
 import "./TabBar.css";
 
 interface Props {
@@ -10,7 +10,8 @@ interface Props {
   onCloseTab: (channelId: string) => void;
   onNewTab: () => void;
   onNewSshTab: (profileId: string) => void;
-  onNewLocalTab: (shellType: "powershell" | "cmd" | "wsl") => void;
+  onNewLocalTab: (shellType: LocalShellId) => void;
+  localShells: LocalShellInfo[];
   onReorderTabs: (fromIndex: number, toIndex: number) => void;
 }
 
@@ -30,6 +31,7 @@ export default function TabBar({
   onNewTab,
   onNewSshTab,
   onNewLocalTab,
+  localShells,
   onReorderTabs,
 }: Props) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -209,15 +211,15 @@ export default function TabBar({
           {dropdownOpen && dropdownPos && (
             <div className="tab-dropdown" style={{ top: dropdownPos.top, left: dropdownPos.left }}>
               <div className="tab-dropdown-section">LOCAL</div>
-              <button className="tab-dropdown-item" onClick={() => { onNewLocalTab("powershell"); setDropdownOpen(false); }}>
-                PowerShell
-              </button>
-              <button className="tab-dropdown-item" onClick={() => { onNewLocalTab("cmd"); setDropdownOpen(false); }}>
-                Command Prompt
-              </button>
-              <button className="tab-dropdown-item" onClick={() => { onNewLocalTab("wsl"); setDropdownOpen(false); }}>
-                WSL
-              </button>
+              {localShells.filter((shell) => shell.available).map((shell) => (
+                <button
+                  key={shell.id}
+                  className="tab-dropdown-item"
+                  onClick={() => { onNewLocalTab(shell.id); setDropdownOpen(false); }}
+                >
+                  {shell.label}
+                </button>
+              ))}
               {profiles.length > 0 && (
                 <>
                   <div className="tab-dropdown-divider" />

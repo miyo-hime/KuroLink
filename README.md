@@ -4,7 +4,7 @@ Terminal emulator for people who think Windows Terminal is fine but wish it look
 
 [![Primary Repo](https://img.shields.io/badge/primary-Kurobox-purple?logo=forgejo)](https://codex.kurobox.me/miyo-rin/KuroLink)
 [![GitHub Mirror](https://img.shields.io/badge/mirror-GitHub-gray?logo=github)](https://github.com/miyo-hime/KuroLink)
-![Version](https://img.shields.io/badge/v0.6.2-orange)
+![Version](https://img.shields.io/badge/v0.6.4-orange)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![Built with Tauri](https://img.shields.io/badge/Tauri%202-24C8D8?logo=tauri&logoColor=white)
 
@@ -13,7 +13,7 @@ Terminal emulator for people who think Windows Terminal is fine but wish it look
 A terminal app. Local shells, SSH connection profiles, live system stats, tabs you can drag around. The UI looks like NERV headquarters because I wanted it to.
 
 **local terminals:**
-- PowerShell, CMD, WSL - launch from the connection screen or open new tabs on the fly
+- PowerShell, CMD, WSL, Nu - launch from the connection screen or open new tabs on the fly
 
 **SSH:**
 - connect to remote servers with saved profiles, get a terminal

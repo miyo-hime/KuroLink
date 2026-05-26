@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ConnectionProfile, HostStatus, SystemStats, AgentIdentityInfo, OpenSshShellResult, SessionInfo } from "./types";
+import type { ConnectionProfile, HostStatus, SystemStats, AgentIdentityInfo, OpenSshShellResult, SessionInfo, LocalShellInfo, LocalShellId } from "./types";
 
 // -- Config --
 
@@ -74,8 +74,11 @@ export const openShell = (sessionId: string, cols: number, rows: number) =>
 export const openSshShell = (profileId: string, cols: number, rows: number, passphrase?: string | null) =>
   invoke<OpenSshShellResult>("open_ssh_shell", { profileId, cols, rows, passphrase: passphrase ?? null });
 
-// spawn a local terminal (powershell, cmd, wsl)
-export const openLocalShell = (shellType: string, cols: number, rows: number, cwd?: string | null) =>
+export const detectLocalShells = () =>
+  invoke<LocalShellInfo[]>("detect_local_shells");
+
+// spawn a local terminal
+export const openLocalShell = (shellType: LocalShellId, cols: number, rows: number, cwd?: string | null) =>
   invoke<string>("open_local_shell", { shellType, cols, rows, cwd: cwd ?? null });
 
 // -- Terminal: IO (backend-agnostic, just need channelId) --
