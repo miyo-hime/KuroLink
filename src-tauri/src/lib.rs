@@ -65,16 +65,9 @@ pub fn run() {
             // save window state when the window is about to close
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 let maximized = window.is_maximized().unwrap_or(false);
-                // grab position/size from before maximize so we restore to the right spot
-                let (x, y, width, height) = if maximized {
-                    let pos = window.outer_position().unwrap_or_default();
-                    let size = window.outer_size().unwrap_or_default();
-                    (pos.x, pos.y, size.width, size.height)
-                } else {
-                    let pos = window.outer_position().unwrap_or_default();
-                    let size = window.outer_size().unwrap_or_default();
-                    (pos.x, pos.y, size.width, size.height)
-                };
+                let pos = window.outer_position().unwrap_or_default();
+                let size = window.outer_size().unwrap_or_default();
+                let (x, y, width, height) = (pos.x, pos.y, size.width, size.height);
 
                 let ws = WindowState {
                     x,

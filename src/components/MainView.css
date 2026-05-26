@@ -13,6 +13,16 @@
   background: var(--bg-terminal);
 }
 
+.terminal-loading {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: var(--accent-primary);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
 /* ---- link lost ---- */
 
 .link-lost-overlay {

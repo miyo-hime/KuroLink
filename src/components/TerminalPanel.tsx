@@ -21,6 +21,7 @@ interface Props {
 const DEFAULT_FONT_SIZE = 14;
 const MIN_FONT_SIZE = 10;
 const MAX_FONT_SIZE = 24;
+const MAX_INACTIVE_BUFFER_BYTES = 4 * 1024 * 1024;
 const ESC = "\u001b";
 const ST = `${ESC}\\`;
 
@@ -54,6 +55,10 @@ export default function TerminalPanel({ channelId, active, searchVisible, onSear
   const fitRef = useRef<FitAddon | null>(null);
   const searchRef = useRef<SearchAddon | null>(null);
   const fontSizeRef = useRef(DEFAULT_FONT_SIZE);
+  const activeRef = useRef(active);
+  const pendingOutputRef = useRef<string[]>([]);
+  const pendingOutputBytesRef = useRef(0);
+  const resizeFrameRef = useRef<number | null>(null);
 
   // search bar
   const [searchQuery, setSearchQuery] = useState("");
@@ -93,7 +98,10 @@ export default function TerminalPanel({ channelId, active, searchVisible, onSear
     // webgl if we can, canvas if we can't
     try {
       const webglAddon = new WebglAddon();
-      webglAddon.onContextLoss(() => webglAddon.dispose());
+      webglAddon.onContextLoss(() => {
+        webglAddon.dispose();
+        requestAnimationFrame(() => term.refresh(0, term.rows - 1));
+      });
       term.loadAddon(webglAddon);
     } catch {
       // canvas it is
@@ -203,7 +211,18 @@ export default function TerminalPanel({ channelId, active, searchVisible, onSear
     let unlistenClosed: (() => void) | null = null;
 
     onTerminalOutput(channelId, (data) => {
-      term.write(data);
+      if (activeRef.current) {
+        term.write(data);
+      } else {
+        pendingOutputRef.current.push(data);
+        pendingOutputBytesRef.current += data.length;
+        if (pendingOutputBytesRef.current >= MAX_INACTIVE_BUFFER_BYTES) {
+          const pending = pendingOutputRef.current;
+          pendingOutputRef.current = [];
+          pendingOutputBytesRef.current = 0;
+          term.write(pending.join(""));
+        }
+      }
     }).then((fn) => {
       unlistenOutput = fn;
       // listener is live - tell the backend it's safe to start pushing output
@@ -217,7 +236,11 @@ export default function TerminalPanel({ channelId, active, searchVisible, onSear
 
     // resize observer
     const resizeObserver = new ResizeObserver(() => {
-      fitAddon.fit();
+      if (!activeRef.current || resizeFrameRef.current != null) return;
+      resizeFrameRef.current = requestAnimationFrame(() => {
+        resizeFrameRef.current = null;
+        fitAddon.fit();
+      });
     });
     resizeObserver.observe(containerRef.current);
 
@@ -245,6 +268,7 @@ export default function TerminalPanel({ channelId, active, searchVisible, onSear
       onResizeDisposable.dispose();
       onTitleDisposable.dispose();
       onBellDisposable.dispose();
+      if (resizeFrameRef.current != null) cancelAnimationFrame(resizeFrameRef.current);
       unlistenOutput?.();
       unlistenClosed?.();
       parserDisposables.forEach((d) => d.dispose());
@@ -254,10 +278,17 @@ export default function TerminalPanel({ channelId, active, searchVisible, onSear
 
   // re-fit on tab switch
   useEffect(() => {
+    activeRef.current = active;
     if (!active) return;
 
     const frame = requestAnimationFrame(() => {
       fitRef.current?.fit();
+      const pending = pendingOutputRef.current;
+      if (pending.length > 0) {
+        pendingOutputRef.current = [];
+        pendingOutputBytesRef.current = 0;
+        termRef.current?.write(pending.join(""));
+      }
       termRef.current?.focus();
     });
 

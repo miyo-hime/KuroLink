@@ -1,10 +1,11 @@
-import { useState, useRef, useCallback } from "react";
+import { lazy, Suspense, useState, useRef, useCallback } from "react";
 import type { ConnectionProfile } from "./lib/types";
 import ConnectionScreen from "./components/ConnectionScreen";
-import MainView from "./components/MainView";
 import "./App.css";
 
 type AppView = "connect" | "terminal";
+
+const MainView = lazy(() => import("./components/MainView"));
 
 function App() {
   const [view, setView] = useState<AppView>("connect");
@@ -50,12 +51,14 @@ function App() {
       )}
       {view === "terminal" && (initialLocalShell || (initialSessionId && initialProfile)) && (
         <div ref={glitchRef} className={glitching ? "view-glitch-out" : ""} style={{ height: "100%", width: "100%" }}>
-          <MainView
-            initialSessionId={initialSessionId}
-            initialProfile={initialProfile}
-            initialLocalShell={initialLocalShell}
-            onDisconnected={handleDisconnected}
-          />
+          <Suspense fallback={<div className="app-loading">LINKING TERMINAL...</div>}>
+            <MainView
+              initialSessionId={initialSessionId}
+              initialProfile={initialProfile}
+              initialLocalShell={initialLocalShell}
+              onDisconnected={handleDisconnected}
+            />
+          </Suspense>
         </div>
       )}
     </div>

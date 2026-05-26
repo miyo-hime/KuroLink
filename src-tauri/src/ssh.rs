@@ -4,6 +4,7 @@ use russh::keys::ssh_key::PublicKey;
 use russh::keys::{load_secret_key, PrivateKeyWithHashAlg};
 use russh::{Channel, ChannelMsg, Disconnect, Pty};
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::fs::OpenOptions;
 use std::io::Write as _;
 use std::path::PathBuf;
@@ -111,6 +112,51 @@ fn debug_escape_bytes(bytes: &[u8]) -> String {
     }
 
     rendered
+}
+
+pub(crate) fn decode_utf8_chunk(pending: &mut Vec<u8>, bytes: &[u8]) -> Option<String> {
+    pending.extend_from_slice(bytes);
+
+    let mut output = String::new();
+    loop {
+        match std::str::from_utf8(pending) {
+            Ok(valid) => {
+                output.push_str(valid);
+                pending.clear();
+                break;
+            }
+            Err(err) => {
+                let valid_up_to = err.valid_up_to();
+                if valid_up_to > 0 {
+                    let valid = std::str::from_utf8(&pending[..valid_up_to]).unwrap_or_default();
+                    output.push_str(valid);
+                    pending.drain(..valid_up_to);
+                    continue;
+                }
+
+                let Some(error_len) = err.error_len() else {
+                    break;
+                };
+
+                output.push_str(&String::from_utf8_lossy(&pending[..error_len]));
+                pending.drain(..error_len);
+            }
+        }
+    }
+
+    if output.is_empty() {
+        None
+    } else {
+        Some(output)
+    }
+}
+
+pub(crate) fn finish_utf8_chunk(pending: &mut Vec<u8>) -> Option<String> {
+    if pending.is_empty() {
+        None
+    } else {
+        Some(String::from_utf8_lossy(&std::mem::take(pending)).to_string())
+    }
 }
 
 pub struct SshHandler {
@@ -357,7 +403,6 @@ impl SshSession {
     /// runtime handle keeps everything on the same executor.
     pub async fn connect_with_agent(host: &str, port: u16, username: &str) -> Result<Self, String> {
         let host = host.to_owned();
-        let port = port;
         let username = username.to_owned();
         let rt = tokio::runtime::Handle::current();
 
@@ -500,6 +545,46 @@ pub enum ChannelInput {
     Close,
 }
 
+async fn process_channel_input(
+    channel: &mut Channel<client::Msg>,
+    app: &AppHandle,
+    session_id: &str,
+    channel_id: &str,
+    input: Option<ChannelInput>,
+    close_requested: &mut bool,
+) -> bool {
+    match input {
+        Some(ChannelInput::Data(bytes)) => {
+            ssh_debug_log(format!(
+                "channel={channel_id} send stdin len={} data={}",
+                bytes.len(),
+                debug_escape_bytes(&bytes),
+            ));
+            if let Err(e) = channel.data(&bytes[..]).await {
+                log::error!("Failed to write to channel: {e}");
+                let err_event = format!("session-error-{session_id}");
+                let _ = app.emit(&err_event, format!("Write failed: {e}"));
+                return false;
+            }
+            true
+        }
+        Some(ChannelInput::Resize { cols, rows }) => {
+            ssh_debug_log(format!(
+                "channel={channel_id} resize cols={cols} rows={rows}"
+            ));
+            let _ = channel.window_change(cols, rows, 0, 0).await;
+            true
+        }
+        Some(ChannelInput::Close) => {
+            *close_requested = true;
+            ssh_debug_log(format!("channel={channel_id} close_requested"));
+            let _ = channel.close().await;
+            true
+        }
+        None => false,
+    }
+}
+
 /// bridges a russh channel to tauri events. returns a sender for
 /// input/resize/close from the frontend
 pub fn spawn_channel_io(
@@ -515,12 +600,44 @@ pub fn spawn_channel_io(
     ));
 
     tokio::spawn(async move {
-        let mut user_closed = false;
+        let mut close_requested = false;
+        let mut utf8_pending = Vec::new();
         ssh_debug_log(format!("channel={channel_id} waiting_for_channel_ready"));
         let _ = start_rx.await;
         ssh_debug_log(format!("channel={channel_id} channel_ready_received"));
 
+        let mut queued_inputs = VecDeque::new();
+        let mut latest_resize = None;
+        while let Ok(input) = rx.try_recv() {
+            match input {
+                ChannelInput::Resize { cols, rows } => latest_resize = Some((cols, rows)),
+                other => queued_inputs.push_back(other),
+            }
+        }
+        if let Some((cols, rows)) = latest_resize {
+            ssh_debug_log(format!(
+                "channel={channel_id} initial_resize cols={cols} rows={rows}"
+            ));
+            let _ = channel.window_change(cols, rows, 0, 0).await;
+        }
+
         loop {
+            if let Some(input) = queued_inputs.pop_front() {
+                if !process_channel_input(
+                    &mut channel,
+                    &app,
+                    &session_id,
+                    &channel_id,
+                    Some(input),
+                    &mut close_requested,
+                )
+                .await
+                {
+                    break;
+                }
+                continue;
+            }
+
             tokio::select! {
                 // data from remote -> frontend
                 msg = channel.wait() => {
@@ -531,9 +648,10 @@ pub fn spawn_channel_io(
                                 data.len(),
                                 debug_escape_bytes(&data),
                             ));
-                            let text = String::from_utf8_lossy(&data).to_string();
-                            let event = format!("terminal-output-{channel_id}");
-                            let _ = app.emit(&event, text);
+                            if let Some(text) = decode_utf8_chunk(&mut utf8_pending, &data) {
+                                let event = format!("terminal-output-{channel_id}");
+                                let _ = app.emit(&event, text);
+                            }
                         }
                         Some(ChannelMsg::ExtendedData { data, .. }) => {
                             ssh_debug_log(format!(
@@ -541,19 +659,24 @@ pub fn spawn_channel_io(
                                 data.len(),
                                 debug_escape_bytes(&data),
                             ));
-                            let text = String::from_utf8_lossy(&data).to_string();
-                            let event = format!("terminal-output-{channel_id}");
-                            let _ = app.emit(&event, text);
+                            if let Some(text) = decode_utf8_chunk(&mut utf8_pending, &data) {
+                                let event = format!("terminal-output-{channel_id}");
+                                let _ = app.emit(&event, text);
+                            }
                         }
                         Some(ChannelMsg::ExitStatus { .. }) | Some(ChannelMsg::Eof) => {
                             ssh_debug_log(format!("channel={channel_id} recv eof_or_exit_status"));
                             // keep going
                         }
                         Some(ChannelMsg::Close) | None => {
-                            ssh_debug_log(format!("channel={channel_id} recv close user_closed={user_closed}"));
+                            ssh_debug_log(format!("channel={channel_id} recv close close_requested={close_requested}"));
+                            if let Some(text) = finish_utf8_chunk(&mut utf8_pending) {
+                                let event = format!("terminal-output-{channel_id}");
+                                let _ = app.emit(&event, text);
+                            }
                             let event = format!("terminal-closed-{channel_id}");
                             let _ = app.emit(&event, ());
-                            if !user_closed {
+                            if !close_requested {
                                 // unexpected close, tell the frontend
                                 let err_event = format!("session-error-{session_id}");
                                 let _ = app.emit(&err_event, "Connection lost");
@@ -567,30 +690,17 @@ pub fn spawn_channel_io(
                 }
                 // input from frontend -> ssh
                 input = rx.recv() => {
-                    match input {
-                        Some(ChannelInput::Data(bytes)) => {
-                            ssh_debug_log(format!(
-                                "channel={channel_id} send stdin len={} data={}",
-                                bytes.len(),
-                                debug_escape_bytes(&bytes),
-                            ));
-                            if let Err(e) = channel.data(&bytes[..]).await {
-                                log::error!("Failed to write to channel: {e}");
-                                let err_event = format!("session-error-{session_id}");
-                                let _ = app.emit(&err_event, format!("Write failed: {e}"));
-                                break;
-                            }
-                        }
-                        Some(ChannelInput::Resize { cols, rows }) => {
-                            ssh_debug_log(format!("channel={channel_id} resize cols={cols} rows={rows}"));
-                            let _ = channel.window_change(cols, rows, 0, 0).await;
-                        }
-                        Some(ChannelInput::Close) | None => {
-                            user_closed = true;
-                            ssh_debug_log(format!("channel={channel_id} close_requested"));
-                            let _ = channel.close().await;
-                            break;
-                        }
+                    if !process_channel_input(
+                        &mut channel,
+                        &app,
+                        &session_id,
+                        &channel_id,
+                        input,
+                        &mut close_requested,
+                    )
+                    .await
+                    {
+                        break;
                     }
                 }
             }

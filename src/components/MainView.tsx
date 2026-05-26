@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { lazy, Suspense, useEffect, useState, useCallback, useRef, useMemo } from "react";
 import type { ConnectionProfile, TerminalTab, SystemStats, ConnectionStatus, MainMode, TabBackend } from "../lib/types";
 import { useKeyboardShortcuts } from "../lib/useKeyboardShortcuts";
 import {
@@ -15,9 +15,10 @@ import {
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import TopBar from "./TopBar";
 import TabBar from "./TabBar";
-import TerminalPanel from "./TerminalPanel";
 import StatusBar from "./StatusBar";
 import "./MainView.css";
+
+const TerminalPanel = lazy(() => import("./TerminalPanel"));
 
 interface Props {
   initialSessionId: string | null;
@@ -43,6 +44,7 @@ export default function MainView({ initialSessionId, initialProfile, initialLoca
   const mountedRef = useRef(false);
   const sessionListenersRef = useRef<Map<string, UnlistenFn>>(new Map());
   const closedTabStackRef = useRef<TerminalTab[]>([]);
+  const statsInFlightRef = useRef(false);
 
   // derived state from active tab
   const activeTab = tabs.find((t) => t.channelId === activeTabId);
@@ -108,6 +110,8 @@ export default function MainView({ initialSessionId, initialProfile, initialLoca
     if (!activeTab) return;
 
     const pollStats = async () => {
+      if (statsInFlightRef.current) return;
+      statsInFlightRef.current = true;
       try {
         let sysStats: SystemStats;
         if (activeTab.backend.kind === "ssh" && !lostSessions.has(activeTab.backend.sessionId)) {
@@ -121,6 +125,8 @@ export default function MainView({ initialSessionId, initialProfile, initialLoca
         });
       } catch {
         // shrug, try again next cycle
+      } finally {
+        statsInFlightRef.current = false;
       }
     };
 
@@ -455,17 +461,19 @@ export default function MainView({ initialSessionId, initialProfile, initialLoca
       </div>
       <div className="terminal-area">
         <div style={{ display: mode === "cli" ? "contents" : "none" }}>
-          {tabs.map((tab) => (
-            <TerminalPanel
-              key={tab.channelId}
-              channelId={tab.channelId}
-              active={tab.channelId === activeTabId && mode === "cli"}
-              searchVisible={searchVisible && tab.channelId === activeTabId}
-              onSearchToggle={() => setSearchVisible((v) => !v)}
-              onClosed={() => handleCloseTab(tab.channelId)}
-              onTitleChange={(title) => handleTabTitleChange(tab.channelId, title)}
-            />
-          ))}
+          <Suspense fallback={<div className="terminal-loading">ALLOCATING PTY...</div>}>
+            {tabs.map((tab) => (
+              <TerminalPanel
+                key={tab.channelId}
+                channelId={tab.channelId}
+                active={tab.channelId === activeTabId && mode === "cli"}
+                searchVisible={searchVisible && tab.channelId === activeTabId}
+                onSearchToggle={() => setSearchVisible((v) => !v)}
+                onClosed={() => handleCloseTab(tab.channelId)}
+                onTitleChange={(title) => handleTabTitleChange(tab.channelId, title)}
+              />
+            ))}
+          </Suspense>
         </div>
         {mode === "de" && (
           <div className="de-placeholder">

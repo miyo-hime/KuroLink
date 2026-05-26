@@ -4,7 +4,7 @@ use std::io::{Read, Write};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{mpsc, oneshot};
 
-use crate::ssh::ChannelInput;
+use crate::ssh::{decode_utf8_chunk, finish_utf8_chunk, ChannelInput};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -79,18 +79,23 @@ pub fn spawn_local_shell(
         let _ = start_rx.blocking_recv();
 
         let mut buf = [0u8; 4096];
+        let mut utf8_pending = Vec::new();
         loop {
             match reader.read(&mut buf) {
                 Ok(0) => break,
                 Ok(n) => {
-                    let text = String::from_utf8_lossy(&buf[..n]).to_string();
-                    let _ = app_read.emit(&format!("terminal-output-{cid_read}"), text);
+                    if let Some(text) = decode_utf8_chunk(&mut utf8_pending, &buf[..n]) {
+                        let _ = app_read.emit(&format!("terminal-output-{cid_read}"), text);
+                    }
                 }
                 Err(e) => {
                     log::error!("pty read error: {e}");
                     break;
                 }
             }
+        }
+        if let Some(text) = finish_utf8_chunk(&mut utf8_pending) {
+            let _ = app_read.emit(&format!("terminal-output-{cid_read}"), text);
         }
         let _ = app_read.emit(&format!("terminal-closed-{cid_read}"), ());
     });
@@ -128,12 +133,14 @@ pub fn spawn_local_shell(
 
 // local system stats via sysinfo
 
-use sysinfo::System;
+use sysinfo::{Disks, System};
 
 /// local machine stats, same struct as remote ssh stats so the frontend
 /// doesn't need to know which kind of tab it's looking at
-pub fn fetch_local_system_stats() -> crate::commands::SystemStats {
-    let mut sys = System::new();
+pub fn fetch_local_system_stats(
+    sys: &mut System,
+    disks: &mut Disks,
+) -> crate::commands::SystemStats {
     sys.refresh_memory();
     sys.refresh_cpu_all();
 
@@ -146,15 +153,14 @@ pub fn fetch_local_system_stats() -> crate::commands::SystemStats {
     };
 
     // disk stats for the main drive
-    use sysinfo::Disks;
-    let disks = Disks::new_with_refreshed_list();
+    disks.refresh(true);
     let (disk_total_gb, disk_used_percent) = disks
         .iter()
         .find(|d| {
             // on windows, find C: drive
             d.mount_point()
                 .to_str()
-                .map_or(false, |p| p.starts_with("C:") || p == "/")
+                .is_some_and(|p| p.starts_with("C:") || p == "/")
         })
         .or_else(|| disks.iter().next())
         .map(|d| {

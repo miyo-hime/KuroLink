@@ -229,6 +229,7 @@ async fn probe_host_inner(
 /// connect to an ssh host (or reuse existing session) and return sessionId.
 /// still used by ConnectionScreen for the initial boot connection
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn connect_ssh(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -318,7 +319,6 @@ pub async fn open_shell(
     entry.channel_count += 1;
 
     let active = ActiveChannel {
-        channel_id: channel_id.clone(),
         backend: ChannelBackend::Ssh {
             session_id: session_id.clone(),
             input_tx,
@@ -365,7 +365,6 @@ pub async fn open_ssh_shell(
         entry.channel_count += 1;
 
         let active = ActiveChannel {
-            channel_id: channel_id.clone(),
             backend: ChannelBackend::Ssh {
                 session_id: sid.clone(),
                 input_tx,
@@ -455,7 +454,6 @@ pub async fn open_ssh_shell(
     state.channels.lock().await.insert(
         channel_id.clone(),
         ActiveChannel {
-            channel_id: channel_id.clone(),
             backend: ChannelBackend::Ssh {
                 session_id: session_id.clone(),
                 input_tx,
@@ -500,7 +498,6 @@ pub async fn open_local_shell(
     state.channels.lock().await.insert(
         channel_id.clone(),
         ActiveChannel {
-            channel_id: channel_id.clone(),
             backend: ChannelBackend::Local { input_tx },
             start_signal: Some(start_signal),
         },
@@ -674,11 +671,11 @@ pub async fn fetch_system_stats(
                 }
             }
         } else if let Some(val) = line.strip_prefix("MEM:") {
-            let parts: Vec<&str> = val.trim().split_whitespace().collect();
+            let parts: Vec<&str> = val.split_whitespace().collect();
             memory_total_mb = parts.first().and_then(|s| s.parse().ok()).unwrap_or(0);
             memory_used_mb = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
         } else if let Some(val) = line.strip_prefix("DISK:") {
-            let parts: Vec<&str> = val.trim().split_whitespace().collect();
+            let parts: Vec<&str> = val.split_whitespace().collect();
             disk_total_kb = parts.first().and_then(|s| s.parse().ok()).unwrap_or(0.0);
             disk_used_kb = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0.0);
         } else if let Some(val) = line.strip_prefix("UP:") {
@@ -717,8 +714,10 @@ pub async fn fetch_system_stats(
 
 /// local system stats - same struct, no ssh needed
 #[tauri::command]
-pub async fn fetch_local_stats() -> Result<SystemStats, String> {
-    Ok(local::fetch_local_system_stats())
+pub async fn fetch_local_stats(state: State<'_, AppState>) -> Result<SystemStats, String> {
+    let mut sys = state.local_system.lock().await;
+    let mut disks = state.local_disks.lock().await;
+    Ok(local::fetch_local_system_stats(&mut sys, &mut disks))
 }
 
 /// get the --path arg if KuroLink was launched with one
@@ -731,7 +730,7 @@ pub async fn get_launch_path(state: State<'_, AppState>) -> Result<Option<String
 // helpers
 
 fn parse_memory(output: &str) -> (Option<f32>, Option<String>) {
-    let parts: Vec<&str> = output.trim().split_whitespace().collect();
+    let parts: Vec<&str> = output.split_whitespace().collect();
     let total: Option<f32> = parts.first().and_then(|s| s.parse().ok());
     let used: Option<f32> = parts.get(1).and_then(|s| s.parse().ok());
     let percent = match (total, used) {
@@ -743,7 +742,7 @@ fn parse_memory(output: &str) -> (Option<f32>, Option<String>) {
 }
 
 fn parse_disk(output: &str) -> (Option<f32>, Option<String>) {
-    let parts: Vec<&str> = output.trim().split_whitespace().collect();
+    let parts: Vec<&str> = output.split_whitespace().collect();
     let total_str = parts.first().map(|s| s.to_string());
     let used_percent = parts
         .get(1)

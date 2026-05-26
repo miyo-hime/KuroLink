@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use sysinfo::{Disks, System};
 use tokio::sync::{mpsc, oneshot, Mutex};
 
 use crate::config::AppConfig;
@@ -16,7 +17,6 @@ pub enum ChannelBackend {
 }
 
 pub struct ActiveChannel {
-    pub channel_id: String,
     pub backend: ChannelBackend,
     // local shells wait for the frontend to signal "listener ready" before
     // the reader thread starts pushing output. None for ssh channels
@@ -54,6 +54,8 @@ pub struct AppState {
     pub channels: Mutex<HashMap<String, ActiveChannel>>,
     pub config: Mutex<Option<AppConfig>>,
     pub launch_path: Mutex<Option<String>>,
+    pub local_system: Mutex<System>,
+    pub local_disks: Mutex<Disks>,
 }
 
 impl AppState {
@@ -66,6 +68,8 @@ impl AppState {
             channels: Mutex::new(HashMap::new()),
             config: Mutex::new(None),
             launch_path: Mutex::new(launch_path),
+            local_system: Mutex::new(System::new()),
+            local_disks: Mutex::new(Disks::new_with_refreshed_list()),
         }
     }
 
