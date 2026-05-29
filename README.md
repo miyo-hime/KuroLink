@@ -4,7 +4,7 @@ Terminal emulator for people who think Windows Terminal is fine but wish it look
 
 [![Primary Repo](https://img.shields.io/badge/primary-Kurobox-purple?logo=forgejo)](https://codex.kurobox.me/miyo-rin/KuroLink)
 [![GitHub Mirror](https://img.shields.io/badge/mirror-GitHub-gray?logo=github)](https://github.com/miyo-hime/KuroLink)
-![Version](https://img.shields.io/badge/v0.6.4-orange)
+![Version](https://img.shields.io/badge/v0.7.0-orange)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![Built with Tauri](https://img.shields.io/badge/Tauri%202-24C8D8?logo=tauri&logoColor=white)
 
@@ -23,7 +23,7 @@ A terminal app. Local shells, SSH connection profiles, live system stats, tabs y
 - connection drop detection - knows when your link dies instead of sitting there pretending everything is fine
 
 **terminal:**
-- xterm.js with WebGL rendering
+- powered by ghostty-web - the actual Ghostty VT engine compiled to wasm, not a JS reimplementation. eats Nerd Fonts, emoji, and CJK without turning them into question-mark soup
 - PuTTY-style clipboard (select to copy, right-click to paste), clickable URLs, search, font zoom, 10k scrollback
 - multi-tab with drag reorder, dropdown menu, context menus, middle-click to close
 - keyboard shortcuts: `Ctrl+Tab`/`Ctrl+Shift+Tab` (cycle), `Ctrl+1-9` (jump), `Ctrl+Shift+W` (close), `Ctrl+Shift+T` (reopen)
@@ -85,10 +85,17 @@ Most people should just download the release. If you want to build it yourself:
 - [x] Live system stats (local + remote)
 - [x] NERV/Gundam command console aesthetic
 - [x] Host key verification, connection drop detection, encrypted passphrase storage
+- [x] ghostty-web terminal engine (real Ghostty VT parser in wasm, with built-from-scratch search)
 - [ ] SFTP file browser / transfers
 - [ ] Custom window chrome (the titlebar deserves the mecha treatment too)
 - [ ] VNC desktop mode (noVNC embedded) - the plumbing is there, the pixels are not
 - [ ] Split panes, session restore, command palette
+
+## credits
+
+the terminal core is [ghostty-web](https://github.com/coder/ghostty-web) by coder - a wasm build of [Ghostty](https://ghostty.org)'s VT engine by Mitchell Hashimoto and contributors. they did the genuinely hard part (parsing a terminal correctly, grapheme clusters and all); KuroLink just wraps it in a mecha costume. go give both a star.
+
+also standing on [Tauri](https://tauri.app), [russh](https://github.com/Eugeny/russh), and [portable-pty](https://crates.io/crates/portable-pty) - open source is a relay race.
 
 ## license
 
