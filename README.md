@@ -4,9 +4,10 @@ Terminal emulator for people who think Windows Terminal is fine but wish it look
 
 [![Primary Repo](https://img.shields.io/badge/primary-Kurobox-purple?logo=forgejo)](https://codex.kurobox.me/miyo-rin/KuroLink)
 [![GitHub Mirror](https://img.shields.io/badge/mirror-GitHub-gray?logo=github)](https://github.com/miyo-hime/KuroLink)
-![Version](https://img.shields.io/badge/v0.7.0-orange)
+![Version](https://img.shields.io/badge/v0.8.0-orange)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![Built with Tauri](https://img.shields.io/badge/Tauri%202-24C8D8?logo=tauri&logoColor=white)
+![Svelte 5](https://img.shields.io/badge/Svelte%205-FF3E00?logo=svelte&logoColor=white)
 
 ## what is this
 
