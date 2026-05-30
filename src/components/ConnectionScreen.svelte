@@ -301,30 +301,29 @@
       <!-- logo -->
       <KuroLinkLogo />
 
-      <!-- two-column layout -->
-      <div class="connection-body">
-        <!-- left side -->
-        <div class="connection-panels">
-          <!-- profiles -->
-          {#if profiles.length > 0}
-            <div class="profile-selector">
-              <label for="profile-select">PROFILE</label>
-              <div class="profile-selector-row">
-                <select id="profile-select" value={selectedId || ""} onchange={handleProfileChange}>
-                  <option value="">New connection...</option>
-                  {#each profiles as p (p.id)}
-                    <option value={p.id}>{p.name} ({p.host})</option>
-                  {/each}
-                </select>
-                {#if selectedId}
-                  <button class="btn-delete-profile" title="Delete profile" onclick={handleDeleteProfile}>
-                    DEL
-                  </button>
-                {/if}
-              </div>
-            </div>
-          {/if}
+      <!-- profiles -->
+      {#if profiles.length > 0}
+        <div class="profile-selector">
+          <label for="profile-select">PROFILE</label>
+          <div class="profile-selector-row">
+            <select id="profile-select" value={selectedId || ""} onchange={handleProfileChange}>
+              <option value="">New connection...</option>
+              {#each profiles as p (p.id)}
+                <option value={p.id}>{p.name} ({p.host})</option>
+              {/each}
+            </select>
+            {#if selectedId}
+              <button class="btn-delete-profile" title="Delete profile" onclick={handleDeleteProfile}>
+                DEL
+              </button>
+            {/if}
+          </div>
+        </div>
+      {/if}
 
+      <!-- params + readout, side by side -->
+      <div class="connection-body">
+        <div class="connection-panels">
           <!-- form -->
           <div class="hud-frame form-panel">
             <span class="hud-frame-label">CONNECTION PARAMETERS</span>
@@ -456,86 +455,81 @@
               </span>
             </div>
 
-            <!-- cpu -->
-            <div class="stat-row-bar stat-instrument {status?.reachable ? 'stat-instrument-live' : ''}" style="animation-delay: 0.2s">
-              <div class="stat-row-header">
-                <span class="field-label">CPU</span>
-                <span class="status-value {status?.reachable && status.cpu_temp != null ? statClass(status.cpu_temp, 60, 75) : ''}">
+            <!-- gauges -->
+            <div class="gauge-cluster">
+              <div class="gauge stat-instrument {status?.reachable ? 'stat-instrument-live' : ''}" style="animation-delay: 0.2s">
+                <span class="gauge-label">CPU</span>
+                <div class="gauge-track">
+                  {#if probing}
+                    <div class="gauge-noise"></div>
+                  {:else}
+                    <div
+                      class="gauge-fill {status?.reachable && status.cpu_temp != null ? statClass(status.cpu_temp, 60, 75) : 'stat-empty'}"
+                      style="height: {status?.reachable && status.cpu_temp != null ? `${Math.min(status.cpu_temp, 100)}%` : '0%'}"
+                    ></div>
+                  {/if}
+                </div>
+                <span class="gauge-value {status?.reachable && status.cpu_temp != null ? statClass(status.cpu_temp, 60, 75) : ''}">
                   {#if status?.reachable && status.cpu_temp != null}
-                    {status.cpu_temp.toFixed(1)}°C
+                    {status.cpu_temp.toFixed(0)}°C
                   {:else}
-                    <span class="stat-placeholder">---</span>
+                    <span class="stat-placeholder">--</span>
                   {/if}
                 </span>
               </div>
-              <div class="stat-bar">
-                {#if probing}
-                  <div class="stat-bar-noise"></div>
-                {:else}
-                  <div
-                    class="stat-bar-fill {status?.reachable && status.cpu_temp != null ? statClass(status.cpu_temp, 60, 75) : 'stat-empty'}"
-                    style="width: {status?.reachable && status.cpu_temp != null ? `${Math.min(status.cpu_temp, 100)}%` : '0%'}"
-                  ></div>
-                {/if}
-              </div>
-            </div>
-
-            <!-- mem -->
-            <div class="stat-row-bar stat-instrument {status?.reachable ? 'stat-instrument-live' : ''}" style="animation-delay: 0.28s">
-              <div class="stat-row-header">
-                <span class="field-label">MEM</span>
-                <span class="status-value {status?.reachable && status.memory_used != null ? statClass(status.memory_used, 70, 85) : ''}">
+              <div class="gauge stat-instrument {status?.reachable ? 'stat-instrument-live' : ''}" style="animation-delay: 0.28s">
+                <span class="gauge-label">MEM</span>
+                <div class="gauge-track">
+                  {#if probing}
+                    <div class="gauge-noise"></div>
+                  {:else}
+                    <div
+                      class="gauge-fill {status?.reachable && status.memory_used != null ? statClass(status.memory_used, 70, 85) : 'stat-empty'}"
+                      style="height: {status?.reachable && status.memory_used != null ? `${Math.min(status.memory_used, 100)}%` : '0%'}"
+                    ></div>
+                  {/if}
+                </div>
+                <span class="gauge-value {status?.reachable && status.memory_used != null ? statClass(status.memory_used, 70, 85) : ''}">
                   {#if status?.reachable && status.memory_used != null}
-                    {status.memory_used.toFixed(0)}%<span class="text-secondary">of {status.memory_total}</span>
+                    {status.memory_used.toFixed(0)}%
                   {:else}
-                    <span class="stat-placeholder">---</span>
+                    <span class="stat-placeholder">--</span>
                   {/if}
                 </span>
               </div>
-              <div class="stat-bar">
-                {#if probing}
-                  <div class="stat-bar-noise"></div>
-                {:else}
-                  <div
-                    class="stat-bar-fill {status?.reachable && status.memory_used != null ? statClass(status.memory_used, 70, 85) : 'stat-empty'}"
-                    style="width: {status?.reachable && status.memory_used != null ? `${Math.min(status.memory_used, 100)}%` : '0%'}"
-                  ></div>
-                {/if}
-              </div>
-            </div>
-
-            <!-- disk -->
-            <div class="stat-row-bar stat-instrument {status?.reachable ? 'stat-instrument-live' : ''}" style="animation-delay: 0.35s">
-              <div class="stat-row-header">
-                <span class="field-label">DISK</span>
-                <span class="status-value {status?.reachable && status.disk_used != null ? statClass(status.disk_used, 80, 90) : ''}">
+              <div class="gauge stat-instrument {status?.reachable ? 'stat-instrument-live' : ''}" style="animation-delay: 0.35s">
+                <span class="gauge-label">DISK</span>
+                <div class="gauge-track">
+                  {#if probing}
+                    <div class="gauge-noise"></div>
+                  {:else}
+                    <div
+                      class="gauge-fill {status?.reachable && status.disk_used != null ? statClass(status.disk_used, 80, 90) : 'stat-empty'}"
+                      style="height: {status?.reachable && status.disk_used != null ? `${Math.min(status.disk_used, 100)}%` : '0%'}"
+                    ></div>
+                  {/if}
+                </div>
+                <span class="gauge-value {status?.reachable && status.disk_used != null ? statClass(status.disk_used, 80, 90) : ''}">
                   {#if status?.reachable && status.disk_used != null}
-                    {status.disk_used.toFixed(0)}%<span class="text-secondary">of {status.disk_total}</span>
+                    {status.disk_used.toFixed(0)}%
                   {:else}
-                    <span class="stat-placeholder">---</span>
+                    <span class="stat-placeholder">--</span>
                   {/if}
                 </span>
-              </div>
-              <div class="stat-bar">
-                {#if probing}
-                  <div class="stat-bar-noise"></div>
-                {:else}
-                  <div
-                    class="stat-bar-fill {status?.reachable && status.disk_used != null ? statClass(status.disk_used, 80, 90) : 'stat-empty'}"
-                    style="width: {status?.reachable && status.disk_used != null ? `${Math.min(status.disk_used, 100)}%` : '0%'}"
-                  ></div>
-                {/if}
               </div>
             </div>
           </div>
         </div>
 
-        <!-- command switches -->
-        <div class="command-panel">
-          <span class="command-panel-label">COMMAND</span>
-          <div class="command-columns">
-            <div class="command-column">
-              <span class="command-column-label">REMOTE</span>
+      </div>
+
+      <!-- command bar -->
+      <div class="command-panel">
+        <span class="command-panel-label">COMMAND</span>
+        <div class="command-rows">
+          <div class="command-row">
+            <span class="command-row-label command-row-label-remote">REMOTE</span>
+            <div class="command-switches">
               <button
                 class="cmd-switch{probing ? ' cmd-switch-active' : ''}{status?.reachable ? ' cmd-switch-success' : ''}"
                 onclick={handleProbe}
@@ -551,18 +545,14 @@
                 disabled={!formValid || connecting}
               >
                 <span class="cmd-switch-indicator{connecting ? ' indicator-pulse indicator-cyan' : ''}"></span>
-                <span class="cmd-switch-label">CLI</span>
+                <span class="cmd-switch-label">CONNECT</span>
                 <span class="cmd-switch-sub">TERMINAL</span>
               </button>
-              <button class="cmd-switch cmd-switch-locked" disabled title="Coming in Phase 2">
-                <span class="cmd-switch-indicator"></span>
-                <span class="cmd-switch-label">DE</span>
-                <span class="cmd-switch-sub">DESKTOP</span>
-                <span class="cmd-switch-lock">LOCKED</span>
-              </button>
             </div>
-            <div class="command-column">
-              <span class="command-column-label">LOCAL</span>
+          </div>
+          <div class="command-row">
+            <span class="command-row-label command-row-label-local">LOCAL</span>
+            <div class="command-switches">
               {#each localShells as shell (shell.id)}
                 <button
                   class="cmd-switch cmd-switch-local{!shell.available ? ' cmd-switch-missing' : ''}"
@@ -745,7 +735,7 @@
     align-items: center;
     gap: 1.25rem;
     padding: 1.5rem 2rem;
-    max-width: 620px;
+    max-width: 760px;
     width: 100%;
     animation: view-enter 0.4s var(--transition-smooth) both;
   }
@@ -766,16 +756,14 @@
 
   .connection-body {
     display: flex;
-    gap: 1.25rem;
     width: 100%;
-    align-items: flex-start;
   }
 
   .connection-panels {
     flex: 1;
     display: flex;
-    flex-direction: column;
-    gap: 1rem;
+    gap: 1.25rem;
+    align-items: stretch;
     min-width: 0;
   }
 
@@ -842,6 +830,8 @@
   /* ---- form ---- */
 
   .form-panel {
+    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
@@ -1118,6 +1108,8 @@
   /* ---- status ---- */
 
   .status-panel {
+    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
@@ -1141,55 +1133,98 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* stat bars */
-  .stat-row-bar {
+  /* gauges - vertical instrument cluster */
+  .gauge-cluster {
+    flex: 1;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-around;
+    gap: 0.75rem;
+    padding-top: 0.6rem;
+    min-height: 0;
+  }
+
+  .gauge {
+    flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 3px;
-    padding: 2px 0;
-  }
-
-  .stat-row-bar .stat-row-header {
-    display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 0.35rem;
   }
 
-  .stat-bar {
-    width: 100%;
-    height: 4px;
-    background: rgba(0, 212, 255, 0.06);
+  .gauge-label {
+    font-size: 0.55rem;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--text-label);
+  }
+
+  /* the tick marks behind the fill sell the instrument-gauge look */
+  .gauge-track {
+    position: relative;
+    width: 14px;
+    height: 64px;
+    background-color: rgba(0, 212, 255, 0.06);
+    background-image: repeating-linear-gradient(
+      0deg,
+      transparent 0 7px,
+      rgba(0, 212, 255, 0.07) 7px 8px
+    );
     border: 1px solid rgba(0, 212, 255, 0.1);
     overflow: hidden;
   }
 
-  .stat-bar-fill {
-    height: 100%;
-    min-width: 2px;
-    transition: width var(--transition-smooth), background-color var(--transition-normal);
+  .gauge-fill {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    min-height: 2px;
+    transition: height var(--transition-smooth), background-color var(--transition-normal);
   }
 
-  .stat-bar-fill.stat-nominal {
+  .gauge-fill.stat-nominal {
     background: var(--accent-success);
-    box-shadow: 0 0 4px var(--accent-success);
+    box-shadow: 0 0 6px var(--accent-success);
   }
-  .stat-bar-fill.stat-caution {
+  .gauge-fill.stat-caution {
     background: var(--accent-warning);
-    box-shadow: 0 0 4px var(--accent-warning);
+    box-shadow: 0 0 6px var(--accent-warning);
   }
-  .stat-bar-fill.stat-critical {
+  .gauge-fill.stat-critical {
     background: var(--accent-secondary);
-    box-shadow: 0 0 6px var(--accent-secondary);
+    box-shadow: 0 0 8px var(--accent-secondary);
     animation: glow-pulse 1.5s ease-in-out infinite;
   }
-  .stat-bar-fill.stat-empty {
+  .gauge-fill.stat-empty {
     background: transparent;
-    width: 0% !important;
+    height: 0 !important;
   }
 
-  .text-secondary {
-    color: var(--text-secondary);
-    font-size: 0.75rem;
+  .gauge-value {
+    font-size: 0.62rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .gauge-noise {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      0deg,
+      transparent 0%,
+      rgba(0, 212, 255, 0.2) 50%,
+      transparent 100%
+    );
+    background-size: 100% 200%;
+    animation: gauge-noise-scroll 0.8s linear infinite;
+  }
+
+  @keyframes gauge-noise-scroll {
+    0% { background-position: 0 200%; }
+    100% { background-position: 0 0%; }
   }
 
   /* placeholder text for idle instruments */
@@ -1268,27 +1303,6 @@
     color: var(--accent-secondary);
     animation: signal-glitch 0.3s ease-out both;
     text-shadow: 0 0 8px rgba(232, 37, 78, 0.4);
-  }
-
-  /* ---- stat bar noise (during scanning) ---- */
-
-  .stat-bar-noise {
-    height: 100%;
-    width: 100%;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgba(0, 212, 255, 0.15) 20%,
-      transparent 25%,
-      rgba(0, 212, 255, 0.1) 40%,
-      transparent 50%,
-      rgba(0, 212, 255, 0.2) 65%,
-      transparent 75%,
-      rgba(0, 212, 255, 0.1) 90%,
-      transparent 100%
-    );
-    background-size: 200% 100%;
-    animation: noise-scroll 0.8s linear infinite;
   }
 
   /* ---- instrument rows (staggered flicker on lock) ---- */
@@ -1408,25 +1422,22 @@
     100% { transform: translateX(0); opacity: 1; filter: none; }
   }
 
-  @keyframes noise-scroll {
-    0% { background-position: 0% 0; }
-    100% { background-position: 200% 0; }
-  }
-
   @keyframes panel-scan-pulse {
     0%, 100% { box-shadow: 0 0 8px rgba(0, 212, 255, 0.04); }
     50% { box-shadow: 0 0 20px rgba(0, 212, 255, 0.1); }
   }
 
-  /* ============================================
-     command switches
-     ============================================ */
+  /* command switches */
 
   .command-panel {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.6rem;
+    width: 100%;
+    margin-top: 0.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-subtle);
   }
 
   .command-panel-label {
@@ -1444,19 +1455,21 @@
     50% { opacity: 1; text-shadow: 0 0 12px rgba(232, 37, 78, 0.5); }
   }
 
-  .command-columns {
-    display: flex;
-    gap: 0.75rem;
-  }
-
-  .command-column {
+  .command-rows {
     display: flex;
     flex-direction: column;
-    align-items: center;
     gap: 0.6rem;
   }
 
-  .command-column-label {
+  .command-row {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+  }
+
+  .command-row-label {
+    min-width: 52px;
+    text-align: right;
     font-size: 0.6rem;
     font-weight: 600;
     letter-spacing: 0.15em;
@@ -1464,14 +1477,19 @@
     animation: sublabel-breathe 5s ease-in-out infinite;
   }
 
-  .command-column:first-child .command-column-label {
+  .command-row-label-remote {
     color: var(--accent-primary);
     text-shadow: 0 0 6px rgba(0, 212, 255, 0.3);
   }
 
-  .command-column:last-child .command-column-label {
+  .command-row-label-local {
     color: #8ccc26;
     text-shadow: 0 0 6px rgba(140, 204, 38, 0.3);
+  }
+
+  .command-switches {
+    display: flex;
+    gap: 0.6rem;
   }
 
   @keyframes sublabel-breathe {
@@ -1582,26 +1600,9 @@
     border-left-color: var(--accent-success);
   }
 
-  /* cli gets the highlight */
+  /* connect gets the highlight */
   .cmd-switch-primary {
     border-left-color: var(--accent-primary);
-  }
-
-  /* locked - not yet */
-  .cmd-switch-locked {
-    opacity: 0.35;
-  }
-
-  .cmd-switch-lock {
-    position: absolute;
-    bottom: 2px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 0.35rem;
-    font-weight: 700;
-    letter-spacing: 0.15em;
-    color: var(--accent-secondary);
-    opacity: 0.8;
   }
 
   .cmd-switch-local {

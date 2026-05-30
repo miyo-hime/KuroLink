@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
   import { DEFAULT_LOCAL_SHELLS } from "../lib/types";
-  import type { ConnectionProfile, TerminalTab, SystemStats, ConnectionStatus, MainMode, TabBackend, LocalShellId, LocalShellInfo } from "../lib/types";
+  import type { ConnectionProfile, TerminalTab, SystemStats, ConnectionStatus, TabBackend, LocalShellId, LocalShellInfo } from "../lib/types";
   import { attachShortcuts } from "../lib/shortcuts";
   import {
     openShell,
@@ -39,7 +39,6 @@
   let activeTabId = $state<string | null>(null);
   let stats = $state<SystemStats | null>(null);
   let prevStats = $state<SystemStats | null>(null);
-  let mode = $state<MainMode>("cli");
   let searchVisible = $state(false);
   let lostSessions = $state<Set<string>>(new Set());
   let reconnecting = $state(false);
@@ -383,49 +382,36 @@
     hostname={activeHostname}
     {connectionStatus}
     latency={activeLatency}
-    {mode}
     searchActive={searchVisible}
-    onModeChange={(m) => (mode = m)}
     onSearchToggle={() => (searchVisible = !searchVisible)}
     onDisconnect={handleDisconnect}
   />
-  <div style="display: {mode === 'cli' ? 'contents' : 'none'}">
-    <TabBar
-      {tabs}
-      {activeTabId}
-      {profiles}
-      onSelectTab={(id) => (activeTabId = id)}
-      onCloseTab={handleCloseTab}
-      onNewTab={handleNewTab}
-      onNewSshTab={createSshTabFromProfile}
-      onNewLocalTab={createLocalTab}
-      {localShells}
-      onReorderTabs={handleReorderTabs}
-    />
-  </div>
+  <TabBar
+    {tabs}
+    {activeTabId}
+    {profiles}
+    onSelectTab={(id) => (activeTabId = id)}
+    onCloseTab={handleCloseTab}
+    onNewTab={handleNewTab}
+    onNewSshTab={createSshTabFromProfile}
+    onNewLocalTab={createLocalTab}
+    {localShells}
+    onReorderTabs={handleReorderTabs}
+  />
   <div class="terminal-area">
-    <div style="display: {mode === 'cli' ? 'contents' : 'none'}">
-      {#if TerminalPanel}
-        {#each tabs as tab (tab.channelId)}
-          <TerminalPanel
-            channelId={tab.channelId}
-            active={tab.channelId === activeTabId && mode === "cli"}
-            searchVisible={searchVisible && tab.channelId === activeTabId}
-            onSearchToggle={() => (searchVisible = !searchVisible)}
-            onClosed={() => handleCloseTab(tab.channelId)}
-            onTitleChange={(title) => handleTabTitleChange(tab.channelId, title)}
-          />
-        {/each}
-      {:else}
-        <div class="terminal-loading">ALLOCATING PTY...</div>
-      {/if}
-    </div>
-    {#if mode === "de"}
-      <div class="de-placeholder">
-        <div class="de-placeholder-icon">&#9634;</div>
-        <div class="de-placeholder-title">DESKTOP ENVIRONMENT</div>
-        <div class="de-placeholder-sub">VNC integration - coming in phase 2</div>
-      </div>
+    {#if TerminalPanel}
+      {#each tabs as tab (tab.channelId)}
+        <TerminalPanel
+          channelId={tab.channelId}
+          active={tab.channelId === activeTabId}
+          searchVisible={searchVisible && tab.channelId === activeTabId}
+          onSearchToggle={() => (searchVisible = !searchVisible)}
+          onClosed={() => handleCloseTab(tab.channelId)}
+          onTitleChange={(title) => handleTabTitleChange(tab.channelId, title)}
+        />
+      {/each}
+    {:else}
+      <div class="terminal-loading">ALLOCATING PTY...</div>
     {/if}
     {#if connectionStatus === "lost"}
       <div class="link-lost-overlay">
@@ -581,35 +567,5 @@
   @keyframes fade-in {
     from { opacity: 0; }
     to { opacity: 1; }
-  }
-
-  /* ---- de placeholder ---- */
-
-  .de-placeholder {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    color: var(--text-dim);
-    gap: 0.5rem;
-  }
-
-  .de-placeholder-icon {
-    font-size: 3rem;
-    opacity: 0.3;
-  }
-
-  .de-placeholder-title {
-    font-size: 0.8rem;
-    font-weight: 600;
-    letter-spacing: 0.15em;
-    color: var(--text-label);
-  }
-
-  .de-placeholder-sub {
-    font-size: 0.65rem;
-    color: var(--text-dim);
-    opacity: 0.6;
   }
 </style>

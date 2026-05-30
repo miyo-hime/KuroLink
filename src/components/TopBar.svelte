@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ConnectionStatus, MainMode } from "../lib/types";
+  import type { ConnectionStatus } from "../lib/types";
   import WindowControls from "./WindowControls.svelte";
   import KuroLinkMark from "./KuroLinkMark.svelte";
 
@@ -7,9 +7,7 @@
     hostname: string;
     connectionStatus: ConnectionStatus;
     latency: number | null;
-    mode: MainMode;
     searchActive: boolean;
-    onModeChange: (mode: MainMode) => void;
     onSearchToggle: () => void;
     onDisconnect: () => void;
   }
@@ -18,9 +16,7 @@
     hostname,
     connectionStatus,
     latency,
-    mode,
     searchActive,
-    onModeChange,
     onSearchToggle,
     onDisconnect,
   }: Props = $props();
@@ -73,19 +69,6 @@
         title="Search terminal (Ctrl+Shift+F)"
       >
         FIND
-      </button>
-      <button
-        class="mode-btn {mode === 'cli' ? 'mode-active' : ''}"
-        onclick={() => onModeChange("cli")}
-      >
-        CLI
-      </button>
-      <button
-        class="mode-btn {mode === 'de' ? 'mode-active' : 'mode-locked'}"
-        disabled
-        title="Phase 2"
-      >
-        DE
       </button>
       {#if confirming}
         <div class="disconnect-confirm">
@@ -278,13 +261,6 @@
     border-color: var(--accent-primary);
     background: rgba(0, 212, 255, 0.08);
     border-top: 2px solid var(--accent-primary);
-  }
-
-  .mode-locked {
-    color: var(--text-dim);
-    border-color: rgba(74, 74, 100, 0.3);
-    opacity: 0.4;
-    cursor: not-allowed;
   }
 
   .disconnect-btn {

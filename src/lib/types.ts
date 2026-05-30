@@ -85,4 +85,3 @@ export interface OpenSshShellResult {
 }
 
 export type ConnectionStatus = "connected" | "degraded" | "lost";
-export type MainMode = "cli" | "de";
