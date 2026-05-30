@@ -43,6 +43,30 @@ pub fn run() {
             let handle = app.handle().clone();
             let _ = ssh::init_ssh_debug(&handle);
 
+            // win11 acrylic behind the transparent window - the terminal's translucent bg
+            // frosts over it. acrylic blurs everything behind (windows + wallpaper).
+            #[cfg(target_os = "windows")]
+            if let Some(win) = app.get_webview_window("main") {
+                use window_vibrancy::apply_acrylic;
+                let _ = apply_acrylic(&win, Some((6, 6, 14, 180)));
+
+                // drop the 1px dwm window border for the sharp borderless cockpit look.
+                if let Ok(hwnd) = win.hwnd() {
+                    use windows_sys::Win32::Graphics::Dwm::{
+                        DwmSetWindowAttribute, DWMWA_BORDER_COLOR,
+                    };
+                    let none_color: u32 = 0xFFFFFFFE;
+                    unsafe {
+                        DwmSetWindowAttribute(
+                            hwnd.0 as _,
+                            DWMWA_BORDER_COLOR as u32,
+                            &none_color as *const u32 as *const _,
+                            std::mem::size_of::<u32>() as u32,
+                        );
+                    }
+                }
+            }
+
             // restore window state from our portable config
             if let Ok(cfg) = config::load_config(&handle) {
                 if let Some(ws) = cfg.window_state {

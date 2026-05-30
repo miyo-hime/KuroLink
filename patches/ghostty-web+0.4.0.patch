@@ -1,0 +1,31 @@
+diff --git a/node_modules/ghostty-web/dist/ghostty-web.js b/node_modules/ghostty-web/dist/ghostty-web.js
+index a4ca427..e45c304 100644
+--- a/node_modules/ghostty-web/dist/ghostty-web.js
++++ b/node_modules/ghostty-web/dist/ghostty-web.js
+@@ -1363,7 +1363,7 @@ class $ {
+   measureFont() {
+     const B = document.createElement("canvas").getContext("2d");
+     B.font = `${this.fontSize}px ${this.fontFamily}`;
+-    const g = B.measureText("M"), E = Math.ceil(g.width), C = g.actualBoundingBoxAscent || this.fontSize * 0.8, I = g.actualBoundingBoxDescent || this.fontSize * 0.2, D = Math.ceil(C + I) + 2, i = Math.ceil(C) + 1;
++    const g = B.measureText("M"), E = Math.ceil(g.width), C = g.actualBoundingBoxAscent || this.fontSize * 0.8, I = g.actualBoundingBoxDescent || this.fontSize * 0.2, KL = Math.ceil(C + I), D = Math.ceil((C + I) * 1.35), i = Math.ceil(C) + 1 + Math.floor((D - KL) / 2);
+     return { width: E, height: D, baseline: i };
+   }
+   /**
+@@ -1491,7 +1491,7 @@ class $ {
+    */
+   renderLine(A, B, g) {
+     const E = B * this.metrics.height;
+-    this.ctx.fillStyle = this.theme.background, this.ctx.fillRect(0, E, g * this.metrics.width, this.metrics.height);
++    this.ctx.clearRect(0, E, g * this.metrics.width, this.metrics.height), this.ctx.fillStyle = this.theme.background, this.ctx.fillRect(0, E, g * this.metrics.width, this.metrics.height);
+     for (let C = 0; C < A.length; C++) {
+       const I = A[C];
+       I.width !== 0 && this.renderCellBackground(I, C, B);
+@@ -1712,7 +1712,7 @@ class $ {
+    * Clear entire canvas
+    */
+   clear() {
+-    this.ctx.fillStyle = this.theme.background, this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
++    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height), this.ctx.fillStyle = this.theme.background, this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+   }
+   /**
+    * Cleanup resources

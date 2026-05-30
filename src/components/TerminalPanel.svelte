@@ -20,30 +20,34 @@
   const MAX_FONT_SIZE = 24;
   const MAX_INACTIVE_BUFFER_BYTES = 4 * 1024 * 1024;
 
+  // bg is fully transparent so the canvas only shows the frost tint that lives on
+  // .terminal-inner. ghostty was patched to clearRect before each fill (renderLine +
+  // clear), otherwise the per-frame fillRect stacks alpha and the glass silts up opaque.
+  // default-bg cells already skip their own fill, so they show the tint through cleanly.
   const TERMINAL_THEME = {
-    background: "#06060c",
-    foreground: "#d8d8e4",
-    cursor: "#00d4ff",
-    cursorAccent: "#08080e",
+    background: "rgba(0, 0, 0, 0)",
+    foreground: "#eef0fb",
+    cursor: "#2ae0ff",
+    cursorAccent: "#06060c",
     // ghostty solid-swaps both selection colors (no alpha), so we lean in: selection
     // = the same accent cyan as the cursor, text inverted to the bg. locked-on look.
-    selectionBackground: "#00d4ff",
+    selectionBackground: "#2ae0ff",
     selectionForeground: "#06060c",
     black: "#08080e",
-    red: "#e8254e",
-    green: "#8ccc26",
-    yellow: "#e8a800",
-    blue: "#00a0ff",
-    magenta: "#c850c0",
-    cyan: "#00d4ff",
-    white: "#d8d8e4",
-    brightBlack: "#4a4a64",
-    brightRed: "#ff4a6e",
-    brightGreen: "#a0dd40",
-    brightYellow: "#ffc830",
-    brightBlue: "#40b8ff",
-    brightMagenta: "#e070e0",
-    brightCyan: "#40e8ff",
+    red: "#ff2e6e",
+    green: "#b6ff3a",
+    yellow: "#ffd23a",
+    blue: "#4aa8ff",
+    magenta: "#ff5ad8",
+    cyan: "#2ae0ff",
+    white: "#eef0fb",
+    brightBlack: "#5a5a78",
+    brightRed: "#ff5a8a",
+    brightGreen: "#caff6a",
+    brightYellow: "#ffe06a",
+    brightBlue: "#6ac2ff",
+    brightMagenta: "#ff7ae4",
+    brightCyan: "#6af0ff",
     brightWhite: "#ffffff",
   };
 
@@ -83,7 +87,8 @@
       term = new Terminal({
         ghostty,
         theme: TERMINAL_THEME,
-        fontFamily: '"JetBrainsMono Nerd Font", "CaskaydiaCove Nerd Font", "FiraCode Nerd Font", "JetBrains Mono", "IBM Plex Mono", "Fira Code", "Cascadia Code", monospace',
+        allowTransparency: true,
+        fontFamily: '"Geist Mono", "JetBrainsMono Nerd Font", "CaskaydiaCove Nerd Font", "FiraCode Nerd Font", "JetBrains Mono", "IBM Plex Mono", "Fira Code", "Cascadia Code", monospace',
         fontSize: DEFAULT_FONT_SIZE,
         cursorBlink: true,
         cursorStyle: "bar",
@@ -422,6 +427,25 @@
     width: 100%;
     height: 100%;
     overflow: hidden;
+    padding: 8px 12px;
+    position: relative;
+    /* the frost tint lives HERE, not on the canvas. the canvas is fully transparent
+       (theme bg = rgba 0) so the padding ring and the text area share one single tint
+       layer - otherwise the padding gap shows lighter glass and reads as a fake border. */
+    background: rgba(6, 6, 14, 0.62);
+  }
+
+  /* crt vignette glow - lost in the xterm->ghostty swap, back now and neon.
+     sits over the canvas edges, pulls focus to the middle. */
+  .terminal-inner::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9;
+    box-shadow:
+      inset 0 0 60px rgba(0, 0, 0, 0.55),
+      inset 0 0 18px rgba(0, 212, 255, 0.06);
   }
 
   .terminal-hidden {
@@ -471,9 +495,7 @@
     z-index: 10;
   }
 
-  /* ============================================
-     search bar
-     ============================================ */
+  /* search bar */
 
   .terminal-search-bar {
     position: absolute;
@@ -512,8 +534,8 @@
   }
 
   .terminal-search-input:focus {
-    border-color: var(--border-glow);
-    box-shadow: 0 0 6px rgba(0, 212, 255, 0.15);
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 10px rgba(0, 212, 255, 0.3), inset 0 0 8px rgba(0, 212, 255, 0.05);
   }
 
   .terminal-search-input::placeholder {
@@ -563,9 +585,7 @@
     }
   }
 
-  /* ============================================
-     visual bell
-     ============================================ */
+  /* visual bell */
 
   .terminal-bell .terminal-inner {
     animation: bell-flash 0.2s ease-out;

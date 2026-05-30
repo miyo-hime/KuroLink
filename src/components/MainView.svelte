@@ -184,7 +184,6 @@
         name = name.split(/[/\\]/).pop() || name;
       }
     }
-    // strip .exe/.cmd/.bat
     return name.replace(/\.(exe|cmd|bat|com)$/i, "");
   }
 
@@ -455,14 +454,15 @@
     flex-direction: column;
     height: 100%;
     width: 100%;
-    background: var(--bg-primary);
   }
 
+  /* no bg here - the win11 acrylic has to reach the terminal canvas, and the
+     terminal's own translucent theme bg does the frosting. paint anything opaque
+     in this chain and the glass bricks up behind it. */
   .terminal-area {
     flex: 1;
     min-height: 0;
     position: relative;
-    background: var(--bg-terminal);
   }
 
   .terminal-loading {

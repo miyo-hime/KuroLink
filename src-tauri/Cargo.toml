@@ -1,6 +1,6 @@
 [package]
 name = "kurolink"
-version = "0.8.0"
+version = "0.9.0"
 description = "SSH client that looks like a mecha command console"
 authors = ["Miyo Kanemitsu"]
 license = "Apache-2.0"
@@ -32,6 +32,13 @@ base64 = "0.22"
 portable-pty = "0.9"
 # local system stats (CPU, memory, disk) for when active tab is a local shell
 sysinfo = "0.33"
+# win11 acrylic behind the transparent window - the frosted glass under the terminal
+window-vibrancy = "0.5"
+
+# just for killing the dwm window border (DWMWA_BORDER_COLOR). matches the version
+# window-vibrancy already pulls in, so no extra compile.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_Foundation"] }
 
 [profile.release]
 panic = "abort"

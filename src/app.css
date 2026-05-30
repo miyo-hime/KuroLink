@@ -1,6 +1,11 @@
-/* ============================================
-   kurolink - design tokens
-   ============================================ */
+/* kurolink - design tokens */
+
+@font-face {
+  font-family: "Geist Mono";
+  src: url("./assets/fonts/GeistMono-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
 
 :root {
   /* backgrounds */
@@ -62,7 +67,9 @@ body,
 body {
   font-family:
     "JetBrains Mono", "IBM Plex Mono", "Fira Code", "Cascadia Code", monospace;
-  background-color: var(--bg-primary);
+  /* translucent, not opaque - lets the win11 acrylic frost through the whole shell.
+     the hud grid rides on top so the cockpit look survives the see-through. */
+  background-color: rgba(8, 8, 14, 0.55);
   background-image:
     repeating-linear-gradient(
       0deg,
@@ -110,9 +117,7 @@ body {
   background: var(--accent-primary);
 }
 
-/* ============================================
-   app shell (was App.css)
-   ============================================ */
+/* app shell (was App.css) */
 
 .app {
   height: 100%;
@@ -142,9 +147,7 @@ body {
   letter-spacing: 0.16em;
 }
 
-/* ============================================
-   hud frames
-   ============================================ */
+/* hud frames */
 
 .hud-frame {
   position: relative;
@@ -287,10 +290,8 @@ body {
   border: none;
 }
 
-/* ============================================
-   buttons - shared design-system button.
-   lives global because ConnectionScreen and MainView both lean on it.
-   ============================================ */
+/* buttons - shared design-system button.
+   lives global because ConnectionScreen and MainView both lean on it. */
 
 .btn {
   width: 100%;
@@ -370,9 +371,7 @@ body {
   animation: loading-stripes 1s linear infinite;
 }
 
-/* ============================================
-   keyframes (shared - components reference these by name)
-   ============================================ */
+/* keyframes (shared - components reference these by name) */
 
 @keyframes border-breathe {
   0%, 100% { opacity: 0.15; }
