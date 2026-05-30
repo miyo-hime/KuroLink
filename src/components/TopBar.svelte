@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { ConnectionStatus, MainMode } from "../lib/types";
+  import WindowControls from "./WindowControls.svelte";
+  import KuroLinkMark from "./KuroLinkMark.svelte";
 
   interface Props {
     hostname: string;
@@ -50,60 +52,73 @@
   });
 </script>
 
-<div class="top-bar">
-  <div class="top-bar-left">
-    <span class="top-bar-label">TARGET</span>
-    <span class="top-bar-host">{hostname}</span>
+<div class="top-bar" data-tauri-drag-region>
+  <div class="top-bar-left" data-tauri-drag-region>
+    <span class="top-bar-mark" data-tauri-drag-region><KuroLinkMark /></span>
+    <span class="top-bar-label" data-tauri-drag-region>TARGET</span>
+    <span class="top-bar-host" data-tauri-drag-region>{hostname}</span>
     <span class="indicator-diamond {indicator.className}"></span>
-    <span class="top-bar-status {connectionStatus !== 'connected' ? 'status-warn' : ''}">
+    <span class="top-bar-status {connectionStatus !== 'connected' ? 'status-warn' : ''}" data-tauri-drag-region>
       {indicator.label}
     </span>
     {#if latency != null && connectionStatus === "connected"}
-      <span class="top-bar-latency {latencyClass(latency)}">{latency}ms</span>
+      <span class="top-bar-latency {latencyClass(latency)}" data-tauri-drag-region>{latency}ms</span>
     {/if}
   </div>
   <div class="top-bar-right">
-    <button
-      class="mode-btn {searchActive ? 'mode-active' : ''}"
-      onclick={onSearchToggle}
-      title="Search terminal (Ctrl+Shift+F)"
-    >
-      FIND
-    </button>
-    <button
-      class="mode-btn {mode === 'cli' ? 'mode-active' : ''}"
-      onclick={() => onModeChange("cli")}
-    >
-      CLI
-    </button>
-    <button
-      class="mode-btn {mode === 'de' ? 'mode-active' : 'mode-locked'}"
-      disabled
-      title="Phase 2"
-    >
-      DE
-    </button>
-    {#if confirming}
-      <div class="disconnect-confirm">
-        <span class="disconnect-confirm-label">TERMINATE LINK?</span>
-        <button
-          class="disconnect-confirm-btn confirm-yes"
-          onclick={() => { confirming = false; onDisconnect(); }}
-        >
-          YES
-        </button>
-        <button
-          class="disconnect-confirm-btn confirm-no"
-          onclick={() => (confirming = false)}
-        >
-          NO
-        </button>
-      </div>
-    {:else}
-      <button class="disconnect-btn" onclick={() => (confirming = true)}>
-        ✕
+    <div class="top-bar-actions">
+      <button
+        class="mode-btn {searchActive ? 'mode-active' : ''}"
+        onclick={onSearchToggle}
+        title="Search terminal (Ctrl+Shift+F)"
+      >
+        FIND
       </button>
-    {/if}
+      <button
+        class="mode-btn {mode === 'cli' ? 'mode-active' : ''}"
+        onclick={() => onModeChange("cli")}
+      >
+        CLI
+      </button>
+      <button
+        class="mode-btn {mode === 'de' ? 'mode-active' : 'mode-locked'}"
+        disabled
+        title="Phase 2"
+      >
+        DE
+      </button>
+      {#if confirming}
+        <div class="disconnect-confirm">
+          <span class="disconnect-confirm-label">TERMINATE LINK?</span>
+          <button
+            class="disconnect-confirm-btn confirm-yes"
+            onclick={() => { confirming = false; onDisconnect(); }}
+          >
+            YES
+          </button>
+          <button
+            class="disconnect-confirm-btn confirm-no"
+            onclick={() => (confirming = false)}
+          >
+            NO
+          </button>
+        </div>
+      {:else}
+        <button
+          class="disconnect-btn"
+          onclick={() => (confirming = true)}
+          aria-label="Terminate link"
+          title="Terminate link"
+        >
+          <svg class="disconnect-glyph" viewBox="0 0 10 10" aria-hidden="true">
+            <polygon points="5,1.2 8.8,6 1.2,6" />
+            <rect x="1.2" y="7.4" width="7.6" height="1.4" />
+          </svg>
+        </button>
+      {/if}
+    </div>
+    <span class="top-bar-divider"></span>
+    <WindowControls />
   </div>
 </div>
 
@@ -112,9 +127,12 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 0.75rem;
+    padding: 0 0 0 0.75rem;
     height: 40px;
     background: var(--bg-secondary);
+    background-image:
+      repeating-linear-gradient(0deg, var(--hud-grid) 0 1px, transparent 1px 20px),
+      repeating-linear-gradient(90deg, var(--hud-grid) 0 1px, transparent 1px 20px);
     border-bottom: 1px solid var(--border-subtle);
     flex-shrink: 0;
     position: relative;
@@ -161,6 +179,14 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    height: 100%;
+  }
+
+  .top-bar-mark {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    margin-right: 0.15rem;
   }
 
   .top-bar-label {
@@ -201,8 +227,22 @@
 
   .top-bar-right {
     display: flex;
+    align-items: stretch;
+    height: 100%;
+  }
+
+  .top-bar-actions {
+    display: flex;
     align-items: center;
     gap: 0.4rem;
+  }
+
+  .top-bar-divider {
+    width: 1px;
+    height: 18px;
+    align-self: center;
+    background: var(--border-glow);
+    margin: 0 0.5rem;
   }
 
   .mode-btn {
@@ -248,11 +288,12 @@
   }
 
   .disconnect-btn {
+    display: inline-grid;
+    place-items: center;
     background: none;
     border: 1px solid rgba(232, 37, 78, 0.3);
     color: var(--accent-secondary);
-    font-size: 0.75rem;
-    padding: 0.15rem 0.5rem;
+    padding: 0.3rem 0.5rem;
     cursor: pointer;
     transition: all var(--transition-fast);
     margin-left: 0.5rem;
@@ -264,6 +305,13 @@
       4px 100%,
       0 calc(100% - 4px)
     );
+  }
+
+  .disconnect-glyph {
+    width: 11px;
+    height: 11px;
+    display: block;
+    fill: currentColor;
   }
 
   .disconnect-btn:hover {

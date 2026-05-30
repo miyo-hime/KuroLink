@@ -1,3 +1,4 @@
+mod chrome;
 mod commands;
 mod config;
 mod local;
@@ -38,6 +39,7 @@ pub fn run() {
             commands::fetch_local_stats,
             commands::get_active_sessions,
             commands::get_launch_path,
+            chrome::set_max_button_rect,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -50,12 +52,16 @@ pub fn run() {
                 use window_vibrancy::apply_acrylic;
                 let _ = apply_acrylic(&win, Some((6, 6, 14, 180)));
 
-                // drop the 1px dwm window border for the sharp borderless cockpit look.
+                // drop the 1px dwm border AND the win11 rounded corners - a cockpit
+                // has hard edges. now that decorations are off these are the last two
+                // bits of os chrome bleeding into the borderless look.
                 if let Ok(hwnd) = win.hwnd() {
                     use windows_sys::Win32::Graphics::Dwm::{
                         DwmSetWindowAttribute, DWMWA_BORDER_COLOR,
+                        DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND,
                     };
                     let none_color: u32 = 0xFFFFFFFE;
+                    let corner_pref: u32 = DWMWCP_DONOTROUND as u32;
                     unsafe {
                         DwmSetWindowAttribute(
                             hwnd.0 as _,
@@ -63,7 +69,15 @@ pub fn run() {
                             &none_color as *const u32 as *const _,
                             std::mem::size_of::<u32>() as u32,
                         );
+                        DwmSetWindowAttribute(
+                            hwnd.0 as _,
+                            DWMWA_WINDOW_CORNER_PREFERENCE as u32,
+                            &corner_pref as *const u32 as *const _,
+                            std::mem::size_of::<u32>() as u32,
+                        );
                     }
+
+                    chrome::init_snap_subclass(win.clone(), hwnd.0 as _);
                 }
             }
 

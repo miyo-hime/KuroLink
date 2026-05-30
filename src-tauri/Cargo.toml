@@ -1,6 +1,6 @@
 [package]
 name = "kurolink"
-version = "0.9.1"
+version = "0.10.0"
 description = "SSH client that looks like a mecha command console"
 authors = ["Miyo Kanemitsu"]
 license = "Apache-2.0"
@@ -35,10 +35,16 @@ sysinfo = "0.33"
 # win11 acrylic behind the transparent window - the frosted glass under the terminal
 window-vibrancy = "0.5"
 
-# just for killing the dwm window border (DWMWA_BORDER_COLOR). matches the version
+# dwm border/corner kill + the snap-flyout window-proc subclass. matches the version
 # window-vibrancy already pulls in, so no extra compile.
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Graphics_Dwm", "Win32_Foundation"] }
+windows-sys = { version = "0.59", features = [
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
+    "Win32_Foundation",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
 
 [profile.release]
 panic = "abort"

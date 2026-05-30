@@ -16,6 +16,7 @@
     listAgentIdentities,
   } from "../lib/ipc";
   import KuroLinkLogo from "./KuroLinkLogo.svelte";
+  import Titlebar from "./Titlebar.svelte";
 
   interface Props {
     onConnected: (
@@ -294,6 +295,7 @@
 </script>
 
 <div class="connection-screen">
+  <Titlebar />
   <div class="connection-scroll">
     <div class="connection-content{connecting ? ' boot-active' : ''}">
       <!-- logo -->
@@ -620,8 +622,7 @@
     height: 100%;
     width: 100%;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    flex-direction: column;
     background:
       radial-gradient(
         ellipse at center,
@@ -638,7 +639,8 @@
     position: relative;
     z-index: 1;
     width: 100%;
-    height: 100%;
+    flex: 1;
+    min-height: 0;
     display: flex;
     align-items: center;
     justify-content: center;
