@@ -1,5 +1,5 @@
 diff --git a/node_modules/ghostty-web/dist/ghostty-web.js b/node_modules/ghostty-web/dist/ghostty-web.js
-index a4ca427..e45c304 100644
+index a4ca427..787ac93 100644
 --- a/node_modules/ghostty-web/dist/ghostty-web.js
 +++ b/node_modules/ghostty-web/dist/ghostty-web.js
 @@ -1363,7 +1363,7 @@ class $ {
@@ -11,6 +11,24 @@ index a4ca427..e45c304 100644
      return { width: E, height: D, baseline: i };
    }
    /**
+@@ -1400,7 +1400,7 @@ class $ {
+     const I = A.getCursor(), D = A.getDimensions(), i = E ? E.getScrollbackLength() : 0;
+     (U = A.needsFullRedraw) != null && U.call(A) && (B = !0), (this.canvas.width !== D.cols * this.metrics.width * this.devicePixelRatio || this.canvas.height !== D.rows * this.metrics.height * this.devicePixelRatio) && (this.resize(D.cols, D.rows), B = !0), g !== this.lastViewportY && (B = !0, this.lastViewportY = g);
+     const s = I.x !== this.lastCursorPosition.x || I.y !== this.lastCursorPosition.y;
+-    if (s || this.cursorBlink) {
++    if (g === 0 && (s || this.cursorBlink)) {
+       if (!B && !A.isRowDirty(I.y)) {
+         const t = A.getLine(I.y);
+         t && this.renderLine(t, I.y, D.cols);
+@@ -1476,7 +1476,7 @@ class $ {
+         c = A.getLine(t);
+       c && this.renderLine(c, t, D.cols);
+     }
+-    g === 0 && I.visible && this.cursorVisible && this.renderCursor(I.x, I.y), E && C > 0 && this.renderScrollbar(g, i, D.rows, C), this.lastCursorPosition = { x: I.x, y: I.y }, A.clearDirty();
++    g === 0 && I.visible && this.cursorVisible && this.renderCursor(I.x, I.y), E && C > 0 && g > 0 && this.renderScrollbar(g, i, D.rows, C), this.lastCursorPosition = { x: I.x, y: I.y }, A.clearDirty();
+   }
+   /**
+    * Render a single line using two-pass approach:
 @@ -1491,7 +1491,7 @@ class $ {
     */
    renderLine(A, B, g) {
@@ -20,7 +38,30 @@ index a4ca427..e45c304 100644
      for (let C = 0; C < A.length; C++) {
        const I = A[C];
        I.width !== 0 && this.renderCellBackground(I, C, B);
-@@ -1712,7 +1712,7 @@ class $ {
+@@ -1649,13 +1649,17 @@ class $ {
+    * @param opacity Opacity level (0-1) for fade in/out effect
+    */
+   renderScrollbar(A, B, g, E = 1) {
+-    const C = this.ctx, I = this.canvas.height / this.devicePixelRatio, D = this.canvas.width / this.devicePixelRatio, i = 8, w = D - i - 4, s = 4, N = I - s * 2;
+-    if (C.fillStyle = this.theme.background, C.fillRect(w - 2, 0, i + 6, I), E <= 0 || B === 0)
++    const C = this.ctx, I = this.canvas.height / this.devicePixelRatio, D = this.canvas.width / this.devicePixelRatio, i = 3, w = D - i - 3, s = 4, N = I - s * 2;
++    if (E <= 0 || B === 0)
+       return;
+     const k = B + g, M = Math.max(20, g / k * N), a = A / B, h = s + (N - M) * (1 - a);
+-    C.fillStyle = `rgba(128, 128, 128, ${0.1 * E})`, C.fillRect(w, s, i, N);
+-    const U = A > 0 ? 0.5 : 0.3;
+-    C.fillStyle = `rgba(128, 128, 128, ${U * E})`, C.fillRect(w, h, i, M);
++    // KL: stock ghostty drops a fat gray slab over the last text column. swapped for a
++    // thin neon HUD bar - 1px faint cyan track, 3px glowing cyan thumb flush to the
++    // right edge. reads as cockpit chrome instead of a clipped column.
++    C.fillStyle = `rgba(42, 224, 255, ${0.1 * E})`, C.fillRect(w + 1, s, 1, N);
++    C.shadowColor = `rgba(42, 224, 255, ${0.6 * E})`, C.shadowBlur = 5 * E;
++    C.fillStyle = `rgba(42, 224, 255, ${0.75 * E})`, C.fillRect(w, h, i, M);
++    C.shadowBlur = 0, C.shadowColor = "transparent";
+   }
+   getMetrics() {
+     return { ...this.metrics };
+@@ -1712,7 +1716,7 @@ class $ {
     * Clear entire canvas
     */
    clear() {
@@ -29,3 +70,63 @@ index a4ca427..e45c304 100644
    }
    /**
     * Cleanup resources
+@@ -2180,8 +2184,8 @@ class IA {
+       const E = this.wasmTerm.getScrollbackLength();
+       if (E === 0)
+         return;
+-      const C = this.canvas.getBoundingClientRect(), I = g.clientX - C.left, D = g.clientY - C.top, i = C.width, w = C.height, s = 8, N = i - s - 4, k = 4;
+-      if (I >= N && I <= N + s) {
++      const C = this.canvas.getBoundingClientRect(), I = g.clientX - C.left, D = g.clientY - C.top, i = C.width, w = C.height, s = 8, N = i - 12, k = 4;
++      if (I >= N) {
+         g.preventDefault(), g.stopPropagation(), g.stopImmediatePropagation();
+         const M = w - k * 2, a = this.rows, h = E + a, G = Math.max(20, a / h * M), U = this.viewportY / E, t = k + (M - G) * (1 - U);
+         if (D >= t && D <= t + G)
+@@ -2387,7 +2391,27 @@ class IA {
+    */
+   writeInternal(A, B) {
+     var g;
+-    this.wasmTerm.write(A), this.processTerminalResponses(), typeof A == "string" && A.includes("\x07") ? this.bellEmitter.fire() : A instanceof Uint8Array && A.includes(7) && this.bellEmitter.fire(), (g = this.linkDetector) == null || g.invalidateCache(), this.viewportY !== 0 && this.scrollToBottom(), typeof A == "string" && A.includes("\x1B]") && this.checkForTitleChange(A), B && requestAnimationFrame(B);
++    // KL: stock ghostty yanks you to the tail on every chunk the second you scroll
++    // up. capture the scrollback depth before the write so we can instead nudge the
++    // viewport down by however many lines just landed - your view stays pinned to the
++    // same content while output streams, no snap-back, no scrollbar flicker.
++    const KLsb = this.viewportY !== 0 ? this.wasmTerm.getScrollbackLength() : 0;
++    this.wasmTerm.write(A), this.processTerminalResponses(), typeof A == "string" && A.includes("\x07") ? this.bellEmitter.fire() : A instanceof Uint8Array && A.includes(7) && this.bellEmitter.fire(), (g = this.linkDetector) == null || g.invalidateCache();
++    if (this.viewportY !== 0) {
++      const KLn = this.wasmTerm.getScrollbackLength() - KLsb;
++      if (KLn > 0) {
++        const KLmax = this.wasmTerm.getScrollbackLength();
++        // a smooth-scroll animation also writes viewportY every frame, so if one's in
++        // flight we only shift its target and let it land pinned - setting viewportY
++        // directly here too would fight the animation and tear the frame mid-scroll.
++        this.targetViewportY = Math.min(KLmax, (this.targetViewportY ?? this.viewportY) + KLn);
++        if (!this.scrollAnimationFrame) {
++          this.viewportY = Math.min(KLmax, this.viewportY + KLn);
++          this.scrollEmitter.fire(this.viewportY);
++        }
++      }
++    }
++    typeof A == "string" && A.includes("\x1B]") && this.checkForTitleChange(A), B && requestAnimationFrame(B);
+   }
+   /**
+    * Write data with newline
+@@ -2682,6 +2706,19 @@ class IA {
+     if (!this.canvas || !this.renderer || !this.linkDetector || !this.wasmTerm)
+       return;
+     const B = this.canvas.getBoundingClientRect(), g = Math.floor((A.clientX - B.left) / this.renderer.charWidth), C = Math.floor((A.clientY - B.top) / this.renderer.charHeight);
++    // KL: the scrollbar lives on the canvas, which is element-wide cursor:text, so
++    // the i-beam bled over it. in the scrollbar lane (x in [width-12, width-4], same
++    // 8px+4 gap renderScrollbar draws) flip to an arrow and bail before link-hover.
++    // the link path only repaints the cursor on hover-state changes, so leaving the
++    // lane onto bare cells would leave the arrow stuck - reset to text on the way out.
++    {
++      const KLx = A.clientX - B.left, KLlane = B.width - 12;
++      if (this.wasmTerm.getScrollbackLength() > 0 && KLx >= KLlane) {
++        this.element && (this.element.style.cursor = "default");
++        return;
++      }
++      this.element && this.element.style.cursor === "default" && (this.element.style.cursor = "text");
++    }
+     let I = 0, D = null;
+     const i = this.getViewportY(), w = Math.max(0, Math.floor(i));
+     if (w > 0) {
