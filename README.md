@@ -4,7 +4,7 @@ Terminal emulator for people who think Windows Terminal is fine but wish it look
 
 [![Primary Repo](https://img.shields.io/badge/primary-Kurobox-purple?logo=forgejo)](https://codex.kurobox.me/miyo-rin/KuroLink)
 [![GitHub Mirror](https://img.shields.io/badge/mirror-GitHub-gray?logo=github)](https://github.com/miyo-hime/KuroLink)
-![Version](https://img.shields.io/badge/v0.10.1-orange)
+![Version](https://img.shields.io/badge/v0.11.0-orange)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![Built with Tauri](https://img.shields.io/badge/Tauri%202-24C8D8?logo=tauri&logoColor=white)
 ![Svelte 5](https://img.shields.io/badge/Svelte%205-FF3E00?logo=svelte&logoColor=white)
@@ -33,6 +33,11 @@ A terminal app. Local shells, SSH connection profiles, live system stats, tabs y
 - local tabs show local system stats (CPU, memory, disk) via sysinfo
 - SSH tabs show remote stats (CPU temp, memory, disk, network) pulled over the connection
 - same UI either way, it just knows which machine to ask
+
+**looks:**
+- appearance presets - seven starting points (baseline, hud, phosphor, glass cockpit, ink, neon, fusion) you pick from a settings drawer (gear in the top bar / titlebar)
+- customize from there: per-color palette, font (5 bundled mono families) + size, glass opacity, window depth (acrylic/blur/solid), and crt effects (scanlines, vignette, glow). picking a preset recolors the *whole* cockpit, not just the terminal
+- live preview in the panel, everything persists to config
 
 **misc:**
 - portable - single `.exe`, config saves next to it, no installer
@@ -88,6 +93,7 @@ Most people should just download the release. If you want to build it yourself:
 - [x] Host key verification, connection drop detection, encrypted passphrase storage
 - [x] ghostty-web terminal engine (real Ghostty VT parser in wasm, with built-from-scratch search)
 - [x] Custom window chrome (borderless cockpit, the titlebar got the mecha treatment too)
+- [x] Appearance presets + live customization (theme, font, glass, effects), whole-cockpit retint
 - [ ] SFTP file browser / transfers
 - [ ] Split panes, session restore, command palette
 

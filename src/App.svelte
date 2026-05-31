@@ -1,8 +1,15 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import type { ConnectionProfile, LocalShellId } from "./lib/types";
   import ConnectionScreen from "./components/ConnectionScreen.svelte";
+  import Settings from "./components/Settings.svelte";
+  import { appearance } from "./lib/appearance.svelte";
 
   type AppView = "connect" | "terminal";
+
+  onMount(() => {
+    appearance.load();
+  });
 
   let view = $state<AppView>("connect");
   let initialSessionId = $state<string | null>(null);
@@ -53,5 +60,8 @@
         />
       {/await}
     </div>
+  {/if}
+  {#if appearance.settingsOpen}
+    <Settings />
   {/if}
 </div>

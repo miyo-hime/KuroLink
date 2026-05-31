@@ -316,7 +316,7 @@
 
   .tab:hover {
     color: var(--text-primary);
-    background: rgba(0, 212, 255, 0.03);
+    background: rgba(var(--accent-rgb), 0.03);
   }
 
   /* hover sweep */
@@ -467,7 +467,7 @@
   .tab-dropdown-arrow:hover,
   .tab-dropdown-open {
     color: var(--accent-primary);
-    background: rgba(0, 212, 255, 0.05);
+    background: rgba(var(--accent-rgb), 0.05);
   }
 
   /* dropdown menu */
@@ -515,7 +515,7 @@
 
   .tab-dropdown-item:hover {
     color: var(--accent-primary);
-    background: rgba(0, 212, 255, 0.05);
+    background: rgba(var(--accent-rgb), 0.05);
   }
 
   .tab-dropdown-profile-name {
@@ -556,6 +556,6 @@
 
   .tab-context-item:hover {
     color: var(--accent-primary);
-    background: rgba(0, 212, 255, 0.05);
+    background: rgba(var(--accent-rgb), 0.05);
   }
 </style>

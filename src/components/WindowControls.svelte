@@ -124,11 +124,11 @@
   .win-btn:hover,
   .win-btn.snap-hover {
     color: var(--accent-primary);
-    background: rgba(0, 212, 255, 0.08);
+    background: rgba(var(--accent-rgb), 0.08);
   }
 
   .win-btn:active {
-    background: rgba(0, 212, 255, 0.14);
+    background: rgba(var(--accent-rgb), 0.14);
   }
 
   .win-btn-close:hover {

@@ -7,6 +7,39 @@
   font-display: swap;
 }
 
+/* preset fonts - latin-subset woff2 so they cost crumbs, not megabytes.
+   jetbrains/fira/martian are variable; plex mono ships static (it has no vf). */
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./assets/fonts/JetBrainsMono-Variable.woff2") format("woff2");
+  font-weight: 100 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Fira Code";
+  src: url("./assets/fonts/FiraCode-Variable.woff2") format("woff2");
+  font-weight: 300 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Martian Mono";
+  src: url("./assets/fonts/MartianMono-Variable.woff2") format("woff2");
+  font-weight: 100 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("./assets/fonts/IBMPlexMono-400.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("./assets/fonts/IBMPlexMono-500.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+
 :root {
   /* backgrounds */
   --bg-primary: #08080e;
@@ -14,8 +47,13 @@
   --bg-tertiary: #141420;
   --bg-terminal: #06060c;
 
+  /* the cockpit's whole identity rides on this one triplet. the theme store
+     overwrites it per preset and the entire HUD recolors - every glow, border
+     and frame downstream is rgba(var(--accent-rgb), x). retint here = retint all. */
+  --accent-rgb: 0, 212, 255;
+
   /* accents */
-  --accent-primary: #00d4ff;
+  --accent-primary: rgb(var(--accent-rgb));
   --accent-secondary: #e8254e;
   --accent-tertiary: #8ccc26;
   --accent-warning: #e8a800;
@@ -28,13 +66,13 @@
   --text-label: #606080;
 
   /* borders & glows */
-  --border-subtle: rgba(0, 212, 255, 0.08);
-  --border-glow: rgba(0, 212, 255, 0.18);
-  --border-active: rgba(0, 212, 255, 0.35);
+  --border-subtle: rgba(var(--accent-rgb), 0.08);
+  --border-glow: rgba(var(--accent-rgb), 0.18);
+  --border-active: rgba(var(--accent-rgb), 0.35);
 
   /* hud stuff */
-  --hud-grid: rgba(0, 212, 255, 0.04);
-  --hud-line: rgba(0, 212, 255, 0.12);
+  --hud-grid: rgba(var(--accent-rgb), 0.04);
+  --hud-line: rgba(var(--accent-rgb), 0.12);
   --panel-shadow: rgba(0, 0, 0, 0.6);
 
   /* timing */
@@ -94,7 +132,7 @@ body {
 
 *:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 1px var(--accent-primary), var(--glow-sm) rgba(0, 212, 255, 0.25);
+  box-shadow: 0 0 0 1px var(--accent-primary), var(--glow-sm) rgba(var(--accent-rgb), 0.25);
 }
 
 /* ---- scrollbar ---- */
@@ -322,14 +360,14 @@ body {
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: rgba(0, 212, 255, 0.08);
-  box-shadow: var(--glow-md) rgba(0, 212, 255, 0.15), inset 0 0 20px rgba(0, 212, 255, 0.05);
+  background: rgba(var(--accent-rgb), 0.08);
+  box-shadow: var(--glow-md) rgba(var(--accent-rgb), 0.15), inset 0 0 20px rgba(var(--accent-rgb), 0.05);
   transform: translateY(-1px);
 }
 
 .btn-primary:active:not(:disabled) {
   transform: translateY(0);
-  background: rgba(0, 212, 255, 0.12);
+  background: rgba(var(--accent-rgb), 0.12);
 }
 
 .btn-primary:disabled {
@@ -364,8 +402,8 @@ body {
     -45deg,
     transparent,
     transparent 8px,
-    rgba(0, 212, 255, 0.06) 8px,
-    rgba(0, 212, 255, 0.06) 16px
+    rgba(var(--accent-rgb), 0.06) 8px,
+    rgba(var(--accent-rgb), 0.06) 16px
   );
   background-size: 40px 40px;
   animation: loading-stripes 1s linear infinite;
@@ -444,11 +482,11 @@ body {
 
 @keyframes logo-glow {
   0%, 100% {
-    filter: drop-shadow(0 0 6px rgba(0, 212, 255, 0.3));
+    filter: drop-shadow(0 0 6px rgba(var(--accent-rgb), 0.3));
   }
   50% {
-    filter: drop-shadow(0 0 14px rgba(0, 212, 255, 0.5))
-           drop-shadow(0 0 28px rgba(0, 212, 255, 0.15));
+    filter: drop-shadow(0 0 14px rgba(var(--accent-rgb), 0.5))
+           drop-shadow(0 0 28px rgba(var(--accent-rgb), 0.15));
   }
 }
 

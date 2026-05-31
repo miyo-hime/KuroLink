@@ -2,6 +2,7 @@
   import type { ConnectionStatus } from "../lib/types";
   import WindowControls from "./WindowControls.svelte";
   import KuroLinkMark from "./KuroLinkMark.svelte";
+  import SettingsButton from "./SettingsButton.svelte";
 
   interface Props {
     hostname: string;
@@ -63,6 +64,7 @@
   </div>
   <div class="top-bar-right">
     <div class="top-bar-actions">
+      <SettingsButton />
       <button
         class="mode-btn {searchActive ? 'mode-active' : ''}"
         onclick={onSearchToggle}
@@ -150,7 +152,7 @@
     background: linear-gradient(
       90deg,
       transparent,
-      rgba(0, 212, 255, 0.08),
+      rgba(var(--accent-rgb), 0.08),
       transparent
     );
     animation: scan-line 8s linear infinite;
@@ -253,13 +255,13 @@
   .mode-btn:hover:not(:disabled) {
     color: var(--accent-primary);
     border-color: var(--accent-primary);
-    background: rgba(0, 212, 255, 0.04);
+    background: rgba(var(--accent-rgb), 0.04);
   }
 
   .mode-active {
     color: var(--accent-primary);
     border-color: var(--accent-primary);
-    background: rgba(0, 212, 255, 0.08);
+    background: rgba(var(--accent-rgb), 0.08);
     border-top: 2px solid var(--accent-primary);
   }
 

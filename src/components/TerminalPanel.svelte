@@ -3,6 +3,8 @@
   import { Ghostty, Terminal, FitAddon, UrlRegexProvider } from "ghostty-web";
   import { open } from "@tauri-apps/plugin-shell";
   import { writeToShell, resizeShell, channelReady, onTerminalOutput, onTerminalClosed } from "../lib/ipc";
+  import { appearance } from "../lib/appearance.svelte";
+  import type { GhosttyTheme } from "../lib/themes";
 
   interface Props {
     channelId: string;
@@ -15,49 +17,38 @@
 
   let { channelId, active, searchVisible, onSearchToggle, onClosed, onTitleChange }: Props = $props();
 
-  const DEFAULT_FONT_SIZE = 14;
   const MIN_FONT_SIZE = 10;
   const MAX_FONT_SIZE = 24;
   const MAX_INACTIVE_BUFFER_BYTES = 4 * 1024 * 1024;
-
-  // bg is fully transparent so the canvas only shows the frost tint that lives on
-  // .terminal-inner. ghostty was patched to clearRect before each fill (renderLine +
-  // clear), otherwise the per-frame fillRect stacks alpha and the glass silts up opaque.
-  // default-bg cells already skip their own fill, so they show the tint through cleanly.
-  const TERMINAL_THEME = {
-    background: "rgba(0, 0, 0, 0)",
-    foreground: "#eef0fb",
-    cursor: "#2ae0ff",
-    cursorAccent: "#06060c",
-    // ghostty solid-swaps both selection colors (no alpha), so we lean in: selection
-    // = the same accent cyan as the cursor, text inverted to the bg. locked-on look.
-    selectionBackground: "#2ae0ff",
-    selectionForeground: "#06060c",
-    black: "#08080e",
-    red: "#ff2e6e",
-    green: "#b6ff3a",
-    yellow: "#ffd23a",
-    blue: "#4aa8ff",
-    magenta: "#ff5ad8",
-    cyan: "#2ae0ff",
-    white: "#eef0fb",
-    brightBlack: "#5a5a78",
-    brightRed: "#ff5a8a",
-    brightGreen: "#caff6a",
-    brightYellow: "#ffe06a",
-    brightBlue: "#6ac2ff",
-    brightMagenta: "#ff7ae4",
-    brightCyan: "#6af0ff",
-    brightWhite: "#ffffff",
-  };
+  const THEME_COLOR_KEYS = [
+    "foreground",
+    "black",
+    "red",
+    "green",
+    "yellow",
+    "blue",
+    "magenta",
+    "cyan",
+    "white",
+    "brightBlack",
+    "brightRed",
+    "brightGreen",
+    "brightYellow",
+    "brightBlue",
+    "brightMagenta",
+    "brightCyan",
+    "brightWhite",
+  ] as const;
 
   let container: HTMLDivElement;
   let term: Terminal | null = null;
   let fitAddon: FitAddon | null = null;
-  let fontSize = DEFAULT_FONT_SIZE;
+  let fontSize = appearance.active.fontSize;
   let pendingOutput: string[] = [];
   let pendingOutputBytes = 0;
   let resizeFrame: number | null = null;
+  let currentAppearance = $derived(appearance.active);
+  let colorRoles = new Map<string, (typeof THEME_COLOR_KEYS)[number]>();
 
   let searchQuery = $state("");
   let searchInput = $state<HTMLInputElement | null>(null);
@@ -83,13 +74,15 @@
 
     Ghostty.load().then((ghostty) => {
       if (disposed || !container) return;
+      const initial = appearance.active;
+      fontSize = initial.fontSize;
 
       term = new Terminal({
         ghostty,
-        theme: TERMINAL_THEME,
+        theme: initial.ghostty,
         allowTransparency: true,
-        fontFamily: '"Geist Mono", "JetBrainsMono Nerd Font", "CaskaydiaCove Nerd Font", "FiraCode Nerd Font", "JetBrains Mono", "IBM Plex Mono", "Fira Code", "Cascadia Code", monospace',
-        fontSize: DEFAULT_FONT_SIZE,
+        fontFamily: initial.fontStack,
+        fontSize: initial.fontSize,
         cursorBlink: true,
         cursorStyle: "bar",
         scrollback: 10000,
@@ -98,6 +91,8 @@
       const addon = new FitAddon();
       term.loadAddon(addon);
       term.open(container);
+      rememberThemeColors(initial.ghostty);
+      patchRendererThemeRemap(term);
 
       // ghostty detects urls itself, but its default activation would navigate
       // the webview - hijack it to hand the uri to the OS browser instead
@@ -266,6 +261,104 @@
     };
   });
 
+  function normalizeHex(color: string | undefined): string | null {
+    if (!color) return null;
+    if (color.startsWith("#")) {
+      const raw = color.slice(1);
+      if (raw.length === 3) return raw.split("").map((c) => c + c).join("").toLowerCase();
+      if (raw.length === 6) return raw.toLowerCase();
+      return null;
+    }
+    const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (!match) return null;
+    return [match[1], match[2], match[3]]
+      .map((n) => Number(n).toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  function rgbHex(r: number, g: number, b: number) {
+    return [r, g, b].map((n) => n.toString(16).padStart(2, "0")).join("");
+  }
+
+  function hexToRgb(hex: string | null) {
+    if (!hex) return null;
+    return {
+      r: Number.parseInt(hex.slice(0, 2), 16),
+      g: Number.parseInt(hex.slice(2, 4), 16),
+      b: Number.parseInt(hex.slice(4, 6), 16),
+    };
+  }
+
+  function rememberThemeColors(theme: GhosttyTheme) {
+    for (const key of THEME_COLOR_KEYS) {
+      const hex = normalizeHex(theme[key]);
+      if (hex) colorRoles.set(hex, key);
+    }
+  }
+
+  function remapColor(r: number, g: number, b: number, theme: GhosttyTheme) {
+    const role = colorRoles.get(rgbHex(r, g, b));
+    return role ? hexToRgb(normalizeHex(theme[role])) : null;
+  }
+
+  function patchRendererThemeRemap(t: Terminal) {
+    const renderer = t.renderer as any;
+    if (!renderer || renderer.__kurolinkThemeRemap) return;
+    renderer.__kurolinkThemeRemap = true;
+
+    const renderCellText = renderer.renderCellText.bind(renderer);
+    const renderCellBackground = renderer.renderCellBackground.bind(renderer);
+
+    const withMappedCell = (cell: any, render: () => void) => {
+      const theme = appearance.active.ghostty;
+      const fg = remapColor(cell.fg_r, cell.fg_g, cell.fg_b, theme);
+      const bg = remapColor(cell.bg_r, cell.bg_g, cell.bg_b, theme);
+      const oldFg = [cell.fg_r, cell.fg_g, cell.fg_b];
+      const oldBg = [cell.bg_r, cell.bg_g, cell.bg_b];
+
+      if (fg) {
+        cell.fg_r = fg.r;
+        cell.fg_g = fg.g;
+        cell.fg_b = fg.b;
+      }
+      if (bg) {
+        cell.bg_r = bg.r;
+        cell.bg_g = bg.g;
+        cell.bg_b = bg.b;
+      }
+
+      try {
+        render();
+      } finally {
+        [cell.fg_r, cell.fg_g, cell.fg_b] = oldFg;
+        [cell.bg_r, cell.bg_g, cell.bg_b] = oldBg;
+      }
+    };
+
+    renderer.renderCellText = (cell: any, x: number, y: number) => {
+      withMappedCell(cell, () => renderCellText(cell, x, y));
+    };
+    renderer.renderCellBackground = (cell: any, x: number, y: number) => {
+      withMappedCell(cell, () => renderCellBackground(cell, x, y));
+    };
+  }
+
+  $effect(() => {
+    const a = currentAppearance;
+    if (!term) return;
+
+    rememberThemeColors(a.ghostty);
+    patchRendererThemeRemap(term);
+    term.options.fontFamily = a.fontStack;
+    term.options.fontSize = a.fontSize;
+    term.renderer?.setTheme(a.ghostty);
+    fontSize = a.fontSize;
+    fitAddon?.fit();
+    if (term.renderer && term.wasmTerm) {
+      term.renderer.render(term.wasmTerm, true, term.viewportY, term);
+    }
+  });
+
   $effect(() => {
     if (!active) return;
 
@@ -362,7 +455,12 @@
   }
 </script>
 
-<div class="terminal-wrapper {active ? 'terminal-active' : 'terminal-hidden'} {bellFlash ? 'terminal-bell' : ''}">
+<div
+  class="terminal-wrapper {active ? 'terminal-active' : 'terminal-hidden'} {bellFlash ? 'terminal-bell' : ''}"
+  class:fx-scanlines={currentAppearance.effects.scanlines}
+  class:fx-vignette={currentAppearance.effects.vignette}
+  class:fx-glow={currentAppearance.effects.glow}
+>
   {#if searchVisible}
     <!-- ghostty has a click-outside-to-deselect handler on document. our nav
          buttons set a selection then the click bubbles up and ghostty wipes it.
@@ -432,20 +530,27 @@
     /* the frost tint lives HERE, not on the canvas. the canvas is fully transparent
        (theme bg = rgba 0) so the padding ring and the text area share one single tint
        layer - otherwise the padding gap shows lighter glass and reads as a fake border. */
-    background: rgba(6, 6, 14, 0.62);
+    background: var(--term-tint, rgba(6, 6, 14, 0.62));
   }
 
-  /* crt vignette glow - lost in the xterm->ghostty swap, back now and neon.
-     sits over the canvas edges, pulls focus to the middle. */
   .terminal-inner::after {
     content: "";
     position: absolute;
     inset: 0;
     pointer-events: none;
     z-index: 9;
+  }
+
+  .terminal-wrapper.fx-vignette .terminal-inner::after {
     box-shadow:
       inset 0 0 60px rgba(0, 0, 0, 0.55),
-      inset 0 0 18px rgba(0, 212, 255, 0.06);
+      inset 0 0 18px rgba(var(--accent-rgb), 0.06);
+  }
+
+  .terminal-wrapper.fx-glow .terminal-inner::after {
+    box-shadow:
+      inset 0 0 60px rgba(0, 0, 0, 0.4),
+      inset 0 0 28px rgba(var(--accent-rgb), 0.14);
   }
 
   .terminal-hidden {
@@ -468,7 +573,7 @@
       90deg,
       transparent,
       var(--border-glow) 30%,
-      rgba(0, 212, 255, 0.12) 50%,
+      rgba(var(--accent-rgb), 0.12) 50%,
       var(--border-glow) 70%,
       transparent
     );
@@ -476,8 +581,7 @@
     pointer-events: none;
   }
 
-  /* scanlines */
-  .terminal-wrapper::after {
+  .terminal-wrapper.fx-scanlines::after {
     content: "";
     position: absolute;
     top: 0;
@@ -535,7 +639,7 @@
 
   .terminal-search-input:focus {
     border-color: var(--accent-primary);
-    box-shadow: 0 0 10px rgba(0, 212, 255, 0.3), inset 0 0 8px rgba(0, 212, 255, 0.05);
+    box-shadow: 0 0 10px rgba(var(--accent-rgb), 0.3), inset 0 0 8px rgba(var(--accent-rgb), 0.05);
   }
 
   .terminal-search-input::placeholder {
@@ -593,7 +697,7 @@
 
   @keyframes bell-flash {
     0% {
-      box-shadow: inset 0 0 40px rgba(0, 212, 255, 0.15);
+      box-shadow: inset 0 0 40px rgba(var(--accent-rgb), 0.15);
     }
     100% {
       box-shadow: none;

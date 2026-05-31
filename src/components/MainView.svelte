@@ -545,8 +545,8 @@
   }
 
   .link-lost-actions .btn-primary:hover:not(:disabled) {
-    background: rgba(0, 212, 255, 0.08);
-    box-shadow: 0 0 12px rgba(0, 212, 255, 0.15);
+    background: rgba(var(--accent-rgb), 0.08);
+    box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.15);
   }
 
   .link-lost-actions .btn-primary:disabled {

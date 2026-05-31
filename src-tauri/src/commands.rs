@@ -102,6 +102,53 @@ pub async fn get_last_profile(
     Ok(profile)
 }
 
+// appearance
+
+#[tauri::command]
+pub async fn get_appearance(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<serde_json::Value>, String> {
+    Ok(state.get_config(&app).await?.appearance)
+}
+
+#[tauri::command]
+pub async fn save_appearance(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    appearance: serde_json::Value,
+) -> Result<(), String> {
+    let mut config = state.get_config(&app).await?;
+    config.appearance = Some(appearance);
+    state.update_config(&app, config).await
+}
+
+/// swap the window's translucency. acrylic blurs everything behind, blur is
+/// lighter, none lets a flat preset stand on its own. windows-only; elsewhere
+/// the frontend tint carries the whole look, so this is a no-op.
+#[tauri::command]
+pub async fn set_window_vibrancy(
+    #[allow(unused_variables)] window: tauri::WebviewWindow,
+    #[allow(unused_variables)] mode: String,
+) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use window_vibrancy::{apply_acrylic, apply_blur, clear_acrylic, clear_blur};
+        let _ = clear_acrylic(&window);
+        let _ = clear_blur(&window);
+        match mode.as_str() {
+            "blur" => {
+                let _ = apply_blur(&window, Some((6, 6, 14, 160)));
+            }
+            "none" => {}
+            _ => {
+                let _ = apply_acrylic(&window, Some((6, 6, 14, 180)));
+            }
+        }
+    }
+    Ok(())
+}
+
 // passphrase
 
 #[tauri::command]

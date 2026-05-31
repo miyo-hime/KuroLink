@@ -1,6 +1,7 @@
 <script lang="ts">
   import WindowControls from "./WindowControls.svelte";
   import KuroLinkMark from "./KuroLinkMark.svelte";
+  import SettingsButton from "./SettingsButton.svelte";
 </script>
 
 <div class="titlebar" data-tauri-drag-region>
@@ -13,6 +14,8 @@
       <span class="titlebar-sys-text">STANDBY</span>
     </span>
   </div>
+  <SettingsButton />
+  <span class="titlebar-divider"></span>
   <WindowControls />
 </div>
 
@@ -71,13 +74,21 @@
     font-size: 0.72rem;
     font-weight: 700;
     letter-spacing: 0.22em;
-    text-shadow: 0 0 8px rgba(0, 212, 255, 0.25);
+    text-shadow: 0 0 8px rgba(var(--accent-rgb), 0.25);
   }
 
   .titlebar-sep {
     width: 1px;
     height: 12px;
     background: var(--border-glow);
+  }
+
+  .titlebar-divider {
+    width: 1px;
+    height: 16px;
+    align-self: center;
+    background: var(--border-glow);
+    margin: 0 0.3rem 0 0.1rem;
   }
 
   .titlebar-sys {

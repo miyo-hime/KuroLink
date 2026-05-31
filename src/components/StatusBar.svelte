@@ -104,7 +104,7 @@
   }
 
   .stat-item:not(:last-child) {
-    border-right: 1px solid rgba(0, 212, 255, 0.08);
+    border-right: 1px solid rgba(var(--accent-rgb), 0.08);
   }
 
   .stat-label {

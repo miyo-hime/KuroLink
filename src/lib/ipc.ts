@@ -15,6 +15,16 @@ export const deleteProfile = (profileId: string) =>
 export const getLastProfile = () =>
   invoke<ConnectionProfile | null>("get_last_profile");
 
+// -- Appearance --
+
+export const getAppearance = () => invoke<unknown | null>("get_appearance");
+
+export const saveAppearance = (appearance: unknown) =>
+  invoke<void>("save_appearance", { appearance });
+
+export const setWindowVibrancy = (mode: string) =>
+  invoke<void>("set_window_vibrancy", { mode });
+
 // -- Passphrase --
 
 export const encryptPassphrase = (plaintext: string) =>

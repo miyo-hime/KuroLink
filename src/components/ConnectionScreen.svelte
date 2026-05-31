@@ -647,15 +647,15 @@
     background:
       repeating-linear-gradient(
         0deg,
-        rgba(0, 212, 255, 0.08) 0px,
-        rgba(0, 212, 255, 0.08) 1px,
+        rgba(var(--accent-rgb), 0.08) 0px,
+        rgba(var(--accent-rgb), 0.08) 1px,
         transparent 1px,
         transparent 40px
       ),
       repeating-linear-gradient(
         90deg,
-        rgba(0, 212, 255, 0.08) 0px,
-        rgba(0, 212, 255, 0.08) 1px,
+        rgba(var(--accent-rgb), 0.08) 0px,
+        rgba(var(--accent-rgb), 0.08) 1px,
         transparent 1px,
         transparent 40px
       );
@@ -701,9 +701,9 @@
     background: linear-gradient(
       180deg,
       transparent 0%,
-      rgba(0, 212, 255, 0.003) 30%,
-      rgba(0, 212, 255, 0.008) 50%,
-      rgba(0, 212, 255, 0.003) 60%,
+      rgba(var(--accent-rgb), 0.003) 30%,
+      rgba(var(--accent-rgb), 0.008) 50%,
+      rgba(var(--accent-rgb), 0.003) 60%,
       transparent 100%
     );
     animation: scan-line 8s linear infinite;
@@ -806,7 +806,7 @@
   .profile-selector select:focus {
     border-color: var(--accent-primary);
     border-left-color: var(--accent-primary);
-    box-shadow: var(--glow-sm) rgba(0, 212, 255, 0.15);
+    box-shadow: var(--glow-sm) rgba(var(--accent-rgb), 0.15);
   }
 
   .btn-delete-profile {
@@ -883,9 +883,9 @@
   }
 
   .form-row input:focus {
-    border-color: rgba(0, 212, 255, 0.15);
+    border-color: rgba(var(--accent-rgb), 0.15);
     border-left-color: var(--accent-primary);
-    box-shadow: inset 2px 0 8px rgba(0, 212, 255, 0.06);
+    box-shadow: inset 2px 0 8px rgba(var(--accent-rgb), 0.06);
   }
 
   .form-row input::placeholder {
@@ -946,7 +946,7 @@
     content: "";
     position: absolute;
     inset: 0;
-    background: linear-gradient(90deg, transparent 50%, rgba(0, 212, 255, 0.02) 100%);
+    background: linear-gradient(90deg, transparent 50%, rgba(var(--accent-rgb), 0.02) 100%);
     transition: all var(--transition-fast);
   }
 
@@ -973,7 +973,7 @@
 
   /* hover - brighten track */
   .checkbox-label:hover .toggle-track {
-    border-color: rgba(0, 212, 255, 0.2);
+    border-color: rgba(var(--accent-rgb), 0.2);
   }
 
   .checkbox-label:hover .toggle-track::after {
@@ -983,14 +983,14 @@
   /* engaged state */
   .checkbox-label input[type="checkbox"]:checked + .toggle-track {
     border-color: var(--accent-primary);
-    background: rgba(0, 212, 255, 0.06);
+    background: rgba(var(--accent-rgb), 0.06);
   }
 
   .checkbox-label input[type="checkbox"]:checked + .toggle-track::before {
     background: linear-gradient(
       90deg,
-      rgba(0, 212, 255, 0.03) 0%,
-      rgba(0, 212, 255, 0.08) 100%
+      rgba(var(--accent-rgb), 0.03) 0%,
+      rgba(var(--accent-rgb), 0.08) 100%
     );
   }
 
@@ -1000,7 +1000,7 @@
     background: var(--accent-primary);
     box-shadow:
       0 0 6px var(--accent-primary),
-      0 0 12px rgba(0, 212, 255, 0.3);
+      0 0 12px rgba(var(--accent-rgb), 0.3);
   }
 
   /* focus ring */
@@ -1026,7 +1026,7 @@
 
   .checkbox-label input[type="checkbox"]:checked ~ .toggle-label-text {
     color: var(--accent-primary);
-    text-shadow: 0 0 8px rgba(0, 212, 255, 0.3);
+    text-shadow: 0 0 8px rgba(var(--accent-rgb), 0.3);
   }
 
   /* status pip next to label */
@@ -1165,13 +1165,13 @@
     position: relative;
     width: 14px;
     height: 64px;
-    background-color: rgba(0, 212, 255, 0.06);
+    background-color: rgba(var(--accent-rgb), 0.06);
     background-image: repeating-linear-gradient(
       0deg,
       transparent 0 7px,
-      rgba(0, 212, 255, 0.07) 7px 8px
+      rgba(var(--accent-rgb), 0.07) 7px 8px
     );
-    border: 1px solid rgba(0, 212, 255, 0.1);
+    border: 1px solid rgba(var(--accent-rgb), 0.1);
     overflow: hidden;
   }
 
@@ -1215,7 +1215,7 @@
     background: linear-gradient(
       0deg,
       transparent 0%,
-      rgba(0, 212, 255, 0.2) 50%,
+      rgba(var(--accent-rgb), 0.2) 50%,
       transparent 100%
     );
     background-size: 100% 200%;
@@ -1256,12 +1256,12 @@
     background: linear-gradient(
       180deg,
       transparent,
-      rgba(0, 212, 255, 0.15),
-      rgba(0, 212, 255, 0.3),
-      rgba(0, 212, 255, 0.15),
+      rgba(var(--accent-rgb), 0.15),
+      rgba(var(--accent-rgb), 0.3),
+      rgba(var(--accent-rgb), 0.15),
       transparent
     );
-    box-shadow: 0 0 12px rgba(0, 212, 255, 0.2);
+    box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.2);
     animation: scanline-sweep 1.8s linear infinite;
   }
 
@@ -1275,8 +1275,8 @@
         0deg,
         transparent 0px,
         transparent 2px,
-        rgba(0, 212, 255, 0.03) 2px,
-        rgba(0, 212, 255, 0.03) 4px
+        rgba(var(--accent-rgb), 0.03) 2px,
+        rgba(var(--accent-rgb), 0.03) 4px
       );
     animation: static-noise 0.15s steps(3) infinite;
   }
@@ -1330,7 +1330,7 @@
   /* scanning - alive and searching */
   .status-panel-scanning {
     border-color: var(--border-active) !important;
-    box-shadow: 0 0 16px rgba(0, 212, 255, 0.08);
+    box-shadow: 0 0 16px rgba(var(--accent-rgb), 0.08);
     animation: panel-scan-pulse 2s ease-in-out infinite;
   }
 
@@ -1423,8 +1423,8 @@
   }
 
   @keyframes panel-scan-pulse {
-    0%, 100% { box-shadow: 0 0 8px rgba(0, 212, 255, 0.04); }
-    50% { box-shadow: 0 0 20px rgba(0, 212, 255, 0.1); }
+    0%, 100% { box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.04); }
+    50% { box-shadow: 0 0 20px rgba(var(--accent-rgb), 0.1); }
   }
 
   /* command switches */
@@ -1479,7 +1479,7 @@
 
   .command-row-label-remote {
     color: var(--accent-primary);
-    text-shadow: 0 0 6px rgba(0, 212, 255, 0.3);
+    text-shadow: 0 0 6px rgba(var(--accent-rgb), 0.3);
   }
 
   .command-row-label-local {
@@ -1523,12 +1523,12 @@
   .cmd-switch:hover:not(:disabled) {
     border-color: var(--accent-primary);
     border-left-color: var(--accent-primary);
-    background: rgba(0, 212, 255, 0.04);
-    box-shadow: 0 0 12px rgba(0, 212, 255, 0.08);
+    background: rgba(var(--accent-rgb), 0.04);
+    box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.08);
   }
 
   .cmd-switch:active:not(:disabled) {
-    background: rgba(0, 212, 255, 0.1);
+    background: rgba(var(--accent-rgb), 0.1);
     transform: scale(0.97);
   }
 
@@ -1563,7 +1563,7 @@
 
   .cmd-switch-indicator.indicator-cyan {
     background: var(--accent-primary);
-    box-shadow: 0 0 8px var(--accent-primary), 0 0 16px rgba(0, 212, 255, 0.3);
+    box-shadow: 0 0 8px var(--accent-primary), 0 0 16px rgba(var(--accent-rgb), 0.3);
   }
 
   .cmd-switch-indicator.indicator-pulse {
@@ -1590,8 +1590,8 @@
   .cmd-switch-active {
     border-color: var(--accent-primary) !important;
     border-left-color: var(--accent-primary) !important;
-    background: rgba(0, 212, 255, 0.06);
-    box-shadow: 0 0 16px rgba(0, 212, 255, 0.1);
+    background: rgba(var(--accent-rgb), 0.06);
+    box-shadow: 0 0 16px rgba(var(--accent-rgb), 0.1);
   }
 
   /* probe came back green */
@@ -1678,7 +1678,7 @@
   }
 
   @keyframes passphrase-glow {
-    from { box-shadow: 0 0 8px rgba(0, 212, 255, 0.05); }
-    to   { box-shadow: 0 0 16px rgba(0, 212, 255, 0.12); }
+    from { box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.05); }
+    to   { box-shadow: 0 0 16px rgba(var(--accent-rgb), 0.12); }
   }
 </style>

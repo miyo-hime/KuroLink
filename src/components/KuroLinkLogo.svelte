@@ -142,7 +142,7 @@
   }
 
   .logo-mark {
-    filter: drop-shadow(0 0 4px rgba(0, 212, 255, 0.3));
+    filter: drop-shadow(0 0 4px rgba(var(--accent-rgb), 0.3));
   }
 
   .logo-chevron {
@@ -155,7 +155,7 @@
     font-weight: 700;
     letter-spacing: 0.3em;
     color: var(--accent-primary);
-    text-shadow: 0 0 10px rgba(0, 212, 255, 0.4);
+    text-shadow: 0 0 10px rgba(var(--accent-rgb), 0.4);
     margin: 0;
     line-height: 1;
   }

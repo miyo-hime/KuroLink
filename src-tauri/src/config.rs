@@ -69,6 +69,10 @@ pub struct AppConfig {
     pub window_state: Option<WindowState>,
     #[serde(default)]
     pub ssh_debug: bool,
+    // appearance is frontend-owned (preset id + palette overrides). rust never
+    // reads inside it - it just round-trips the blob and lets the ui interpret.
+    #[serde(default)]
+    pub appearance: Option<serde_json::Value>,
 }
 
 pub fn config_path(_app: &AppHandle) -> Result<PathBuf, String> {
