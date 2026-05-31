@@ -2,6 +2,7 @@ mod chrome;
 mod commands;
 mod config;
 mod local;
+mod sftp;
 mod ssh;
 mod state;
 
@@ -42,6 +43,13 @@ pub fn run() {
             commands::fetch_local_stats,
             commands::get_active_sessions,
             commands::get_launch_path,
+            commands::sftp_list_dir,
+            commands::sftp_realpath,
+            commands::sftp_read_file,
+            commands::sftp_write_file,
+            commands::sftp_mkdir,
+            commands::sftp_remove,
+            commands::sftp_rename,
             chrome::set_max_button_rect,
         ])
         .setup(|app| {

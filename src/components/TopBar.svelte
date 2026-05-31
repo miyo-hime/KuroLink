@@ -11,6 +11,9 @@
     searchActive: boolean;
     onSearchToggle: () => void;
     onDisconnect: () => void;
+    filesAvailable: boolean;
+    filesActive: boolean;
+    onFilesToggle: () => void;
   }
 
   let {
@@ -20,6 +23,9 @@
     searchActive,
     onSearchToggle,
     onDisconnect,
+    filesAvailable,
+    filesActive,
+    onFilesToggle,
   }: Props = $props();
 
   function latencyClass(ms: number): string {
@@ -65,6 +71,15 @@
   <div class="top-bar-right">
     <div class="top-bar-actions">
       <SettingsButton />
+      {#if filesAvailable}
+        <button
+          class="mode-btn {filesActive ? 'mode-active' : ''}"
+          onclick={onFilesToggle}
+          title="File browser (SFTP)"
+        >
+          FILES
+        </button>
+      {/if}
       <button
         class="mode-btn {searchActive ? 'mode-active' : ''}"
         onclick={onSearchToggle}

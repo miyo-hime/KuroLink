@@ -1,9 +1,12 @@
+use russh_sftp::client::SftpSession;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Instant;
 use tauri::{AppHandle, State};
 
 use crate::config::ConnectionProfile;
 use crate::local::{self, LocalShellInfo, LocalShellType};
+use crate::sftp::{self, SftpEntry};
 use crate::ssh::{self, AgentIdentityInfo, ChannelInput, SshSession};
 use crate::state::{ActiveChannel, AppState, ChannelBackend, SshSessionEntry};
 
@@ -309,6 +312,7 @@ pub async fn connect_ssh(
         profile_id,
         ssh: session,
         channel_count: 0,
+        sftp: None,
     };
 
     state
@@ -491,6 +495,7 @@ pub async fn open_ssh_shell(
         profile_id,
         ssh: ssh_session,
         channel_count: 1,
+        sftp: None,
     };
 
     state
@@ -776,6 +781,94 @@ pub async fn fetch_local_stats(state: State<'_, AppState>) -> Result<SystemStats
 #[tauri::command]
 pub async fn get_launch_path(state: State<'_, AppState>) -> Result<Option<String>, String> {
     Ok(state.launch_path.lock().await.clone())
+}
+
+// sftp - rides the existing ssh session, one subsystem channel per session
+
+/// grab the session's sftp handle, opening the subsystem the first time.
+/// the lock is held only for the open round-trip; the Arc clone lets the
+/// actual file op run lock-free so a fat transfer can't freeze other tabs.
+async fn sftp_for(state: &AppState, session_id: &str) -> Result<Arc<SftpSession>, String> {
+    let mut sessions = state.ssh_sessions.lock().await;
+    let entry = sessions.get_mut(session_id).ok_or("Session not found")?;
+    if let Some(sftp) = &entry.sftp {
+        return Ok(sftp.clone());
+    }
+    let sftp = Arc::new(entry.ssh.open_sftp().await?);
+    entry.sftp = Some(sftp.clone());
+    Ok(sftp)
+}
+
+#[tauri::command]
+pub async fn sftp_list_dir(
+    state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+) -> Result<Vec<SftpEntry>, String> {
+    let sftp = sftp_for(&state, &session_id).await?;
+    sftp::list_dir(&sftp, &path).await
+}
+
+#[tauri::command]
+pub async fn sftp_realpath(
+    state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+) -> Result<String, String> {
+    let sftp = sftp_for(&state, &session_id).await?;
+    sftp::realpath(&sftp, &path).await
+}
+
+#[tauri::command]
+pub async fn sftp_read_file(
+    state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+) -> Result<String, String> {
+    let sftp = sftp_for(&state, &session_id).await?;
+    sftp::read_file(&sftp, &path).await
+}
+
+#[tauri::command]
+pub async fn sftp_write_file(
+    state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+    contents: String,
+) -> Result<(), String> {
+    let sftp = sftp_for(&state, &session_id).await?;
+    sftp::write_file(&sftp, &path, contents).await
+}
+
+#[tauri::command]
+pub async fn sftp_mkdir(
+    state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+) -> Result<(), String> {
+    let sftp = sftp_for(&state, &session_id).await?;
+    sftp::make_dir(&sftp, &path).await
+}
+
+#[tauri::command]
+pub async fn sftp_remove(
+    state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+) -> Result<(), String> {
+    let sftp = sftp_for(&state, &session_id).await?;
+    sftp::remove(&sftp, &path).await
+}
+
+#[tauri::command]
+pub async fn sftp_rename(
+    state: State<'_, AppState>,
+    session_id: String,
+    from: String,
+    to: String,
+) -> Result<(), String> {
+    let sftp = sftp_for(&state, &session_id).await?;
+    sftp::rename(&sftp, &from, &to).await
 }
 
 // helpers

@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ConnectionProfile, HostStatus, SystemStats, AgentIdentityInfo, OpenSshShellResult, SessionInfo, LocalShellInfo, LocalShellId } from "./types";
+import type { ConnectionProfile, HostStatus, SystemStats, AgentIdentityInfo, OpenSshShellResult, SessionInfo, LocalShellInfo, LocalShellId, SftpEntry } from "./types";
 
 // -- Config --
 
@@ -121,6 +121,29 @@ export const getActiveSessions = () =>
 
 export const getLaunchPath = () =>
   invoke<string | null>("get_launch_path");
+
+// -- SFTP (rides the ssh session) --
+
+export const sftpListDir = (sessionId: string, path: string) =>
+  invoke<SftpEntry[]>("sftp_list_dir", { sessionId, path });
+
+export const sftpRealpath = (sessionId: string, path: string) =>
+  invoke<string>("sftp_realpath", { sessionId, path });
+
+export const sftpReadFile = (sessionId: string, path: string) =>
+  invoke<string>("sftp_read_file", { sessionId, path });
+
+export const sftpWriteFile = (sessionId: string, path: string, contents: string) =>
+  invoke<void>("sftp_write_file", { sessionId, path, contents });
+
+export const sftpMkdir = (sessionId: string, path: string) =>
+  invoke<void>("sftp_mkdir", { sessionId, path });
+
+export const sftpRemove = (sessionId: string, path: string) =>
+  invoke<void>("sftp_remove", { sessionId, path });
+
+export const sftpRename = (sessionId: string, from: string, to: string) =>
+  invoke<void>("sftp_rename", { sessionId, from, to });
 
 // -- Event Listeners --
 

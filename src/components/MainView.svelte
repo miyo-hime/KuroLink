@@ -19,6 +19,7 @@
   import TopBar from "./TopBar.svelte";
   import TabBar from "./TabBar.svelte";
   import StatusBar from "./StatusBar.svelte";
+  import FileBrowser from "./FileBrowser.svelte";
 
   interface Props {
     initialSessionId: string | null;
@@ -40,6 +41,7 @@
   let stats = $state<SystemStats | null>(null);
   let prevStats = $state<SystemStats | null>(null);
   let searchVisible = $state(false);
+  let filesVisible = $state(false);
   let lostSessions = $state<Set<string>>(new Set());
   let reconnecting = $state(false);
   let profiles = $state<ConnectionProfile[]>([]);
@@ -68,6 +70,8 @@
   let activeLatency = $derived(
     activeTab?.backend.kind === "ssh" && stats ? stats.latency_ms : null,
   );
+  // sftp needs a live ssh session - local tabs and dead links don't get the panel
+  let filesAvailable = $derived(activeSessionId != null && !isActiveLost);
 
   // open a shell on an existing ssh session (used for initial tab + "+" duplication)
   async function createSshTabFromSession(sessionId: string, profile: ConnectionProfile) {
@@ -385,6 +389,9 @@
     searchActive={searchVisible}
     onSearchToggle={() => (searchVisible = !searchVisible)}
     onDisconnect={handleDisconnect}
+    {filesAvailable}
+    filesActive={filesVisible}
+    onFilesToggle={() => (filesVisible = !filesVisible)}
   />
   <TabBar
     {tabs}
@@ -398,7 +405,11 @@
     {localShells}
     onReorderTabs={handleReorderTabs}
   />
-  <div class="terminal-area">
+  <div class="work-area">
+    {#if filesVisible && activeSessionId && !isActiveLost}
+      <FileBrowser sessionId={activeSessionId} onClose={() => (filesVisible = false)} />
+    {/if}
+    <div class="terminal-area">
     {#if TerminalPanel}
       {#each tabs as tab (tab.channelId)}
         <TerminalPanel
@@ -430,6 +441,7 @@
         </div>
       </div>
     {/if}
+    </div>
   </div>
   <StatusBar {stats} {prevStats} pollIntervalMs={STATS_POLL_MS} />
 </div>
@@ -442,11 +454,20 @@
     width: 100%;
   }
 
+  /* the file browser and terminal sit side by side. no bg - keep the glass chain
+     intact (see below). */
+  .work-area {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+  }
+
   /* no bg here - the win11 acrylic has to reach the terminal canvas, and the
      terminal's own translucent theme bg does the frosting. paint anything opaque
      in this chain and the glass bricks up behind it. */
   .terminal-area {
     flex: 1;
+    min-width: 0;
     min-height: 0;
     position: relative;
   }

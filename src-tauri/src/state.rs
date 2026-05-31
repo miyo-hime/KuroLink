@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 use sysinfo::{Disks, System};
 use tokio::sync::{mpsc, oneshot, Mutex};
 
@@ -47,6 +48,9 @@ pub struct SshSessionEntry {
     pub profile_id: String,
     pub ssh: SshSession,
     pub channel_count: usize,
+    // one sftp channel per session, opened lazily on the first file op and shared
+    // by Arc so transfers don't hold the sessions lock. drops with the entry.
+    pub sftp: Option<Arc<russh_sftp::client::SftpSession>>,
 }
 
 pub struct AppState {

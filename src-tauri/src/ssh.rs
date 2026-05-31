@@ -495,6 +495,25 @@ impl SshSession {
         Ok(channel)
     }
 
+    /// open an sftp subsystem channel on this session. the russh handle
+    /// multiplexes, so this rides alongside live shell channels untouched.
+    /// `&self` on purpose - channel_open_session doesn't need exclusive access,
+    /// which lets the caller hold the sessions lock for only the open round-trip.
+    pub async fn open_sftp(&self) -> Result<russh_sftp::client::SftpSession, String> {
+        let channel = self
+            .handle
+            .channel_open_session()
+            .await
+            .map_err(|e| format!("Failed to open sftp channel: {e}"))?;
+        channel
+            .request_subsystem(true, "sftp")
+            .await
+            .map_err(|e| format!("Failed to request sftp subsystem: {e}"))?;
+        russh_sftp::client::SftpSession::new(channel.into_stream())
+            .await
+            .map_err(|e| format!("SFTP init failed: {e}"))
+    }
+
     pub async fn exec_command(&mut self, command: &str) -> Result<String, String> {
         let mut channel = self
             .handle
