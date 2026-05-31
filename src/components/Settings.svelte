@@ -1,6 +1,6 @@
 <script lang="ts">
   import { appearance } from "../lib/appearance.svelte";
-  import { PRESETS, FONT_OPTIONS, type ColorKey } from "../lib/themes";
+  import { PRESETS, FONT_OPTIONS, CURSOR_STYLE_OPTIONS, type ColorKey } from "../lib/themes";
 
   const MIN_SIZE = 10;
   const MAX_SIZE = 24;
@@ -90,7 +90,7 @@ On branch <span style="color:{a.ghostty.cyan}">main</span>
 listening on :<span style="color:{a.ghostty.magenta}">8080</span>
 <span style="color:{a.ghostty.cyan}">user@host</span>:<span style="color:{a.ghostty.green}">~/project</span>$ cat config.toml
 <span style="color:{a.ghostty.red}">error</span>: no such file or directory
-<span style="color:{a.ghostty.cyan}">user@host</span>:<span style="color:{a.ghostty.green}">~/project</span>$ <span class="preview-cur" style="background:{a.ghostty.cursor}"></span></pre>
+<span style="color:{a.ghostty.cyan}">user@host</span>:<span style="color:{a.ghostty.green}">~/project</span>$ <span class="preview-cur cursor-{a.cursorStyle}" style="background:{a.ghostty.cursor}"></span></pre>
         </div>
       </div>
 
@@ -142,6 +142,20 @@ listening on :<span style="color:{a.ghostty.magenta}">8080</span>
             <button class="step-btn" onclick={() => setSize(a.fontSize - 1)} aria-label="Smaller">&minus;</button>
             <span class="step-value tabular-nums">{a.fontSize}px</span>
             <button class="step-btn" onclick={() => setSize(a.fontSize + 1)} aria-label="Larger">+</button>
+          </div>
+        </div>
+
+        <div class="ctrl-row">
+          <span class="ctrl-label">CURSOR</span>
+          <div class="seg">
+            {#each CURSOR_STYLE_OPTIONS as c (c.id)}
+              <button
+                class="seg-btn {a.cursorStyle === c.id ? 'seg-active' : ''}"
+                onclick={() => appearance.setOverride({ cursorStyle: c.id })}
+              >
+                {c.label}
+              </button>
+            {/each}
           </div>
         </div>
 
@@ -369,10 +383,17 @@ listening on :<span style="color:{a.ghostty.magenta}">8080</span>
   }
   .preview-cur {
     display: inline-block;
-    width: 0.55em;
+    width: 0.58em;
     height: 1.05em;
     vertical-align: text-bottom;
     animation: cur-blink 1.1s steps(1) infinite;
+  }
+  .preview-cur.cursor-bar {
+    width: 0.12em;
+  }
+  .preview-cur.cursor-underline {
+    width: 0.58em;
+    height: 0.16em;
   }
   @keyframes cur-blink {
     50% { opacity: 0; }

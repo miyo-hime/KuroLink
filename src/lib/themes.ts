@@ -3,6 +3,7 @@
 // user overrides into a ResolvedTheme that the canvas + the whole HUD read from.
 
 export type Vibrancy = "acrylic" | "blur" | "none";
+export type CursorStyle = "block" | "bar" | "underline";
 
 export interface Effects {
   scanlines: boolean;
@@ -86,6 +87,7 @@ export interface Preset {
   blurb: string;
   fontFamily: string; // bare family, resolve() wraps it in the fallback stack
   fontSize: number;
+  cursorStyle: CursorStyle;
   vibrancy: Vibrancy;
   tintRgb: string; // "r, g, b" for the .terminal-inner frost
   tintAlpha: number;
@@ -101,6 +103,7 @@ export const PRESETS: Preset[] = [
     blurb: "glass cockpit, neon brights, default lock-on",
     fontFamily: "Geist Mono",
     fontSize: 14,
+    cursorStyle: "block",
     vibrancy: "acrylic",
     tintRgb: "6, 6, 14",
     tintAlpha: 0.62,
@@ -118,6 +121,7 @@ export const PRESETS: Preset[] = [
     blurb: "warm, soft, low contrast. reading mode",
     fontFamily: "IBM Plex Mono",
     fontSize: 15,
+    cursorStyle: "bar",
     vibrancy: "none",
     tintRgb: "12, 11, 10",
     tintAlpha: 1,
@@ -135,6 +139,7 @@ export const PRESETS: Preset[] = [
     blurb: "crt bloom, scanlines, green-cyan glass",
     fontFamily: "Fira Code",
     fontSize: 14,
+    cursorStyle: "block",
     vibrancy: "none",
     tintRgb: "4, 8, 10",
     tintAlpha: 1,
@@ -152,6 +157,7 @@ export const PRESETS: Preset[] = [
     blurb: "pastel dark mode, soft but still readable",
     fontFamily: "JetBrains Mono",
     fontSize: 14,
+    cursorStyle: "underline",
     vibrancy: "acrylic",
     tintRgb: "30, 30, 46",
     tintAlpha: 0.82,
@@ -169,6 +175,7 @@ export const PRESETS: Preset[] = [
     blurb: "high-energy editor classic, loud in the useful way",
     fontFamily: "JetBrains Mono",
     fontSize: 14,
+    cursorStyle: "bar",
     vibrancy: "none",
     tintRgb: "39, 40, 34",
     tintAlpha: 0.9,
@@ -186,6 +193,7 @@ export const PRESETS: Preset[] = [
     blurb: "violet cockpit, candy ANSI, strong personality",
     fontFamily: "Fira Code",
     fontSize: 14,
+    cursorStyle: "block",
     vibrancy: "acrylic",
     tintRgb: "40, 42, 54",
     tintAlpha: 0.88,
@@ -203,6 +211,7 @@ export const PRESETS: Preset[] = [
     blurb: "cold, restrained, readable arctic console",
     fontFamily: "IBM Plex Mono",
     fontSize: 14,
+    cursorStyle: "underline",
     vibrancy: "none",
     tintRgb: "46, 52, 64",
     tintAlpha: 0.92,
@@ -220,6 +229,7 @@ export const PRESETS: Preset[] = [
     blurb: "warm retro shell energy, earthy and kind",
     fontFamily: "JetBrains Mono",
     fontSize: 14,
+    cursorStyle: "block",
     vibrancy: "none",
     tintRgb: "40, 40, 40",
     tintAlpha: 0.94,
@@ -247,6 +257,12 @@ export const FONT_OPTIONS = [
   "Martian Mono",
 ] as const;
 
+export const CURSOR_STYLE_OPTIONS: { id: CursorStyle; label: string }[] = [
+  { id: "block", label: "BLOCK" },
+  { id: "bar", label: "BAR" },
+  { id: "underline", label: "LINE" },
+];
+
 // nerd-font + generic fallbacks ride behind every choice so glyphs/icons survive
 export function fontStack(family: string): string {
   return `"${family}", "JetBrainsMono Nerd Font", "CaskaydiaCove Nerd Font", "FiraCode Nerd Font", "Cascadia Code", monospace`;
@@ -266,6 +282,7 @@ export type ColorKey =
 export interface ThemeOverrides {
   fontFamily?: string;
   fontSize?: number;
+  cursorStyle?: CursorStyle;
   vibrancy?: Vibrancy;
   tintAlpha?: number;
   accentRgb?: string;
@@ -283,6 +300,7 @@ export interface ResolvedTheme {
   fontFamily: string; // bare family (for the dropdown's current value)
   fontStack: string; // full css stack (for actual rendering)
   fontSize: number;
+  cursorStyle: CursorStyle;
   vibrancy: Vibrancy;
   tint: string; // rgba(...) for --term-tint
   tintRgb: string;
@@ -335,6 +353,7 @@ export function resolveTheme(stored: StoredAppearance): ResolvedTheme {
     fontFamily,
     fontStack: fontStack(fontFamily),
     fontSize: o.fontSize ?? preset.fontSize,
+    cursorStyle: o.cursorStyle ?? preset.cursorStyle,
     vibrancy: o.vibrancy ?? preset.vibrancy,
     tint: `rgba(${preset.tintRgb}, ${tintAlpha})`,
     tintRgb: preset.tintRgb,

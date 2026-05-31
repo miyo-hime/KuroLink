@@ -84,7 +84,7 @@
         fontFamily: initial.fontStack,
         fontSize: initial.fontSize,
         cursorBlink: true,
-        cursorStyle: "bar",
+        cursorStyle: initial.cursorStyle,
         scrollback: 10000,
       });
 
@@ -351,6 +351,7 @@
     patchRendererThemeRemap(term);
     term.options.fontFamily = a.fontStack;
     term.options.fontSize = a.fontSize;
+    term.options.cursorStyle = a.cursorStyle;
     term.renderer?.setTheme(a.ghostty);
     fontSize = a.fontSize;
     fitAddon?.fit();
