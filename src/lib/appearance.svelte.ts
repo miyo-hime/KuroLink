@@ -1,6 +1,7 @@
 import {
   resolveTheme,
   DEFAULT_PRESET_ID,
+  normalizePresetId,
   type StoredAppearance,
   type ThemeOverrides,
   type ResolvedTheme,
@@ -43,7 +44,7 @@ class AppearanceStore {
     try {
       const stored = (await getAppearance()) as StoredAppearance | null;
       if (stored?.presetId) {
-        this.presetId = stored.presetId;
+        this.presetId = normalizePresetId(stored.presetId);
         this.overrides = stored.overrides ?? {};
       }
     } catch {
@@ -65,7 +66,7 @@ class AppearanceStore {
 
   // a preset is a fresh starting point, so picking one wipes prior tweaks
   selectPreset(id: string) {
-    this.presetId = id;
+    this.presetId = normalizePresetId(id);
     this.overrides = {};
     this.#afterChange();
   }

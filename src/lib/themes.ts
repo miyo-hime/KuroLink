@@ -1,7 +1,6 @@
-// the seven directions from terminal-mockup.html, made real. each preset is a
-// bundle: the ghostty canvas palette, the cockpit accent, a glass tint, a font,
-// and which crt toys are on. the store merges a preset with user overrides into
-// a ResolvedTheme that the canvas + the whole HUD read from.
+// each preset is a bundle: the ghostty canvas palette, the cockpit accent, a
+// glass tint, a font, and which crt toys are on. the store merges a preset with
+// user overrides into a ResolvedTheme that the canvas + the whole HUD read from.
 
 export type Vibrancy = "acrylic" | "blur" | "none";
 
@@ -97,71 +96,20 @@ export interface Preset {
 
 export const PRESETS: Preset[] = [
   {
-    id: "baseline",
-    name: "baseline",
-    blurb: "what shipped first. flat, dense, honest",
-    fontFamily: "JetBrains Mono",
-    fontSize: 14,
-    vibrancy: "none",
-    tintRgb: "6, 6, 12",
-    tintAlpha: 1,
-    accentRgb: "0, 212, 255",
-    effects: { scanlines: false, vignette: false, glow: false },
-    ghostty: palette({
-      bg: "#06060c", fg: "#d8d8e4", cursor: "#00d4ff", black: "#4a4a64",
-      red: "#e8254e", green: "#8ccc26", yellow: "#e8a800", blue: "#00a0ff",
-      magenta: "#c850c0", cyan: "#00d4ff", white: "#d8d8e4",
-    }),
-  },
-  {
-    id: "hud",
-    name: "hud nominal",
-    blurb: "the loosened, padded refit. brighter cyan",
-    fontFamily: "JetBrains Mono",
-    fontSize: 14,
-    vibrancy: "none",
-    tintRgb: "10, 10, 20",
-    tintAlpha: 1,
-    accentRgb: "63, 220, 255",
-    effects: { scanlines: false, vignette: true, glow: false },
-    ghostty: palette({
-      bg: "#050509", fg: "#dadae6", cursor: "#3fdcff", black: "#5a5a78",
-      red: "#ff4a6e", green: "#9be84a", yellow: "#ffc24a", blue: "#40b8ff",
-      magenta: "#e070e0", cyan: "#3fdcff", white: "#dadae6",
-    }),
-  },
-  {
-    id: "phosphor",
-    name: "phosphor",
-    blurb: "crt bloom, scanlines, green-cyan glass",
-    fontFamily: "Fira Code",
-    fontSize: 14,
-    vibrancy: "none",
-    tintRgb: "4, 8, 10",
-    tintAlpha: 1,
-    accentRgb: "57, 255, 224",
-    effects: { scanlines: true, vignette: true, glow: true },
-    ghostty: palette({
-      bg: "#04080a", fg: "#79f0d8", cursor: "#39ffe0", black: "#3a6a64",
-      red: "#ff6a7a", green: "#7dff8a", yellow: "#ffe07a", blue: "#6ad4ff",
-      magenta: "#ff8ae0", cyan: "#39ffe0", white: "#9bffb0",
-    }),
-  },
-  {
-    id: "glass",
-    name: "glass cockpit",
-    blurb: "translucent, blurred, floating over acrylic",
+    id: "kurolink",
+    name: "kurolink",
+    blurb: "glass cockpit, neon brights, default lock-on",
     fontFamily: "Geist Mono",
     fontSize: 14,
     vibrancy: "acrylic",
-    tintRgb: "8, 10, 22",
-    tintAlpha: 0.55,
-    accentRgb: "95, 224, 255",
-    effects: { scanlines: false, vignette: true, glow: false },
+    tintRgb: "6, 6, 14",
+    tintAlpha: 0.62,
+    accentRgb: "42, 224, 255",
+    effects: { scanlines: true, vignette: true, glow: true },
     ghostty: palette({
-      bg: "#080a16", fg: "#ececf6", cursor: "#5fe0ff", black: "#8888a8",
-      red: "#ff6585", green: "#a8ee62", yellow: "#ffce5f", blue: "#62c2ff",
-      magenta: "#ef88ef", cyan: "#5fe0ff", white: "#ececf6",
+      bg: "#06060c", fg: "#eef0fb", cursor: "#2ae0ff", black: "#5a5a78",
+      red: "#ff2e6e", green: "#b6ff3a", yellow: "#ffd23a", blue: "#4aa8ff",
+      magenta: "#ff5ad8", cyan: "#2ae0ff", white: "#eef0fb",
     }),
   },
   {
@@ -182,42 +130,114 @@ export const PRESETS: Preset[] = [
     }),
   },
   {
-    id: "neon",
-    name: "neon overdrive",
-    blurb: "punchy mecha instrument cluster, full glow",
-    fontFamily: "Martian Mono",
-    fontSize: 13,
+    id: "phosphor",
+    name: "phosphor",
+    blurb: "crt bloom, scanlines, green-cyan glass",
+    fontFamily: "Fira Code",
+    fontSize: 14,
     vibrancy: "none",
-    tintRgb: "2, 2, 7",
+    tintRgb: "4, 8, 10",
     tintAlpha: 1,
-    accentRgb: "42, 224, 255",
-    effects: { scanlines: false, vignette: true, glow: true },
+    accentRgb: "57, 255, 224",
+    effects: { scanlines: true, vignette: true, glow: true },
     ghostty: palette({
-      bg: "#020207", fg: "#e8ecff", cursor: "#2ae0ff", black: "#454560",
-      red: "#ff2e6e", green: "#b6ff3a", yellow: "#ffd23a", blue: "#4aa8ff",
-      magenta: "#ff5ad8", cyan: "#2ae0ff", white: "#e8ecff",
+      bg: "#04080a", fg: "#79f0d8", cursor: "#39ffe0", black: "#3a6a64",
+      red: "#ff6a7a", green: "#7dff8a", yellow: "#ffe07a", blue: "#6ad4ff",
+      magenta: "#ff8ae0", cyan: "#39ffe0", white: "#9bffb0",
     }),
   },
   {
-    id: "fusion",
-    name: "fusion",
-    blurb: "glass cockpit + neon brights + glow. the default",
-    fontFamily: "Geist Mono",
+    id: "catppuccin-mocha",
+    name: "catppuccin mocha",
+    blurb: "pastel dark mode, soft but still readable",
+    fontFamily: "JetBrains Mono",
     fontSize: 14,
     vibrancy: "acrylic",
-    tintRgb: "6, 6, 14",
-    tintAlpha: 0.62,
-    accentRgb: "42, 224, 255",
-    effects: { scanlines: true, vignette: true, glow: true },
+    tintRgb: "30, 30, 46",
+    tintAlpha: 0.82,
+    accentRgb: "137, 220, 235",
+    effects: { scanlines: false, vignette: true, glow: true },
     ghostty: palette({
-      bg: "#06060c", fg: "#eef0fb", cursor: "#2ae0ff", black: "#5a5a78",
-      red: "#ff2e6e", green: "#b6ff3a", yellow: "#ffd23a", blue: "#4aa8ff",
-      magenta: "#ff5ad8", cyan: "#2ae0ff", white: "#eef0fb",
+      bg: "#1e1e2e", fg: "#cdd6f4", cursor: "#89dceb", black: "#45475a",
+      red: "#f38ba8", green: "#a6e3a1", yellow: "#f9e2af", blue: "#89b4fa",
+      magenta: "#cba6f7", cyan: "#94e2d5", white: "#cdd6f4",
+    }),
+  },
+  {
+    id: "monokai",
+    name: "monokai",
+    blurb: "high-energy editor classic, loud in the useful way",
+    fontFamily: "JetBrains Mono",
+    fontSize: 14,
+    vibrancy: "none",
+    tintRgb: "39, 40, 34",
+    tintAlpha: 0.9,
+    accentRgb: "102, 217, 239",
+    effects: { scanlines: false, vignette: false, glow: false },
+    ghostty: palette({
+      bg: "#272822", fg: "#f8f8f2", cursor: "#66d9ef", black: "#49483e",
+      red: "#f92672", green: "#a6e22e", yellow: "#e6db74", blue: "#66d9ef",
+      magenta: "#ae81ff", cyan: "#a1efe4", white: "#f8f8f2",
+    }),
+  },
+  {
+    id: "dracula",
+    name: "dracula",
+    blurb: "violet cockpit, candy ANSI, strong personality",
+    fontFamily: "Fira Code",
+    fontSize: 14,
+    vibrancy: "acrylic",
+    tintRgb: "40, 42, 54",
+    tintAlpha: 0.88,
+    accentRgb: "189, 147, 249",
+    effects: { scanlines: false, vignette: true, glow: true },
+    ghostty: palette({
+      bg: "#282a36", fg: "#f8f8f2", cursor: "#bd93f9", black: "#6272a4",
+      red: "#ff5555", green: "#50fa7b", yellow: "#f1fa8c", blue: "#8be9fd",
+      magenta: "#ff79c6", cyan: "#8be9fd", white: "#f8f8f2",
+    }),
+  },
+  {
+    id: "nord",
+    name: "nord",
+    blurb: "cold, restrained, readable arctic console",
+    fontFamily: "IBM Plex Mono",
+    fontSize: 14,
+    vibrancy: "none",
+    tintRgb: "46, 52, 64",
+    tintAlpha: 0.92,
+    accentRgb: "136, 192, 208",
+    effects: { scanlines: false, vignette: true, glow: false },
+    ghostty: palette({
+      bg: "#2e3440", fg: "#d8dee9", cursor: "#88c0d0", black: "#4c566a",
+      red: "#bf616a", green: "#a3be8c", yellow: "#ebcb8b", blue: "#81a1c1",
+      magenta: "#b48ead", cyan: "#8fbcbb", white: "#d8dee9",
+    }),
+  },
+  {
+    id: "gruvbox-dark",
+    name: "gruvbox dark",
+    blurb: "warm retro shell energy, earthy and kind",
+    fontFamily: "JetBrains Mono",
+    fontSize: 14,
+    vibrancy: "none",
+    tintRgb: "40, 40, 40",
+    tintAlpha: 0.94,
+    accentRgb: "254, 128, 25",
+    effects: { scanlines: false, vignette: false, glow: false },
+    ghostty: palette({
+      bg: "#282828", fg: "#ebdbb2", cursor: "#fe8019", black: "#665c54",
+      red: "#fb4934", green: "#b8bb26", yellow: "#fabd2f", blue: "#83a598",
+      magenta: "#d3869b", cyan: "#8ec07c", white: "#ebdbb2",
     }),
   },
 ];
 
-export const DEFAULT_PRESET_ID = "fusion";
+export const DEFAULT_PRESET_ID = "kurolink";
+
+const PRESET_ALIASES: Record<string, string> = {
+  fusion: "kurolink",
+};
 
 export const FONT_OPTIONS = [
   "Geist Mono",
@@ -272,8 +292,13 @@ export interface ResolvedTheme {
   ghostty: GhosttyTheme;
 }
 
+export function normalizePresetId(id: string): string {
+  return PRESET_ALIASES[id] ?? id;
+}
+
 export function presetById(id: string): Preset {
-  return PRESETS.find((p) => p.id === id) ?? PRESETS.find((p) => p.id === DEFAULT_PRESET_ID)!;
+  const normalized = normalizePresetId(id);
+  return PRESETS.find((p) => p.id === normalized) ?? PRESETS.find((p) => p.id === DEFAULT_PRESET_ID)!;
 }
 
 export function resolveTheme(stored: StoredAppearance): ResolvedTheme {
