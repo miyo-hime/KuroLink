@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, setContext } from "svelte";
+  import { HIGHLIGHT_KEY, type TreeHighlight } from "../lib/treeHighlight";
   import type { SftpEntry, FileMenuTarget } from "../lib/types";
   import {
     sftpListDir,
@@ -24,7 +25,9 @@
   let loading = $state(false);
   let error = $state<string | null>(null);
 
-  type Menu = { x: number; y: number; target: FileMenuTarget };
+  type Menu =
+    | { x: number; y: number; kind: "node"; target: FileMenuTarget }
+    | { x: number; y: number; kind: "root" };
   type Dialog =
     | {
         kind: "input";
@@ -49,6 +52,21 @@
 
   let menuEl = $state<HTMLDivElement | null>(null);
   let inputEl = $state<HTMLInputElement | null>(null);
+  let bodyEl = $state<HTMLDivElement | null>(null);
+
+  // bumping this remounts every top-level node (and its subtree), which is the
+  // whole collapse-all trick: fresh nodes start collapsed with cleared caches
+  let treeVersion = $state(0);
+
+  const highlight = $state<TreeHighlight>({ path: null });
+  setContext(HIGHLIGHT_KEY, highlight);
+  let flashTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function flashNew(path: string) {
+    highlight.path = path;
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => (highlight.path = null), 1100);
+  }
 
   function dirname(p: string): string {
     const i = p.lastIndexOf("/");
@@ -83,7 +101,24 @@
 
   function openMenu(e: MouseEvent, target: FileMenuTarget) {
     e.preventDefault();
-    menu = { x: e.clientX, y: e.clientY, target };
+    menu = { x: e.clientX, y: e.clientY, kind: "node", target };
+  }
+
+  // kill the webview's native menu panel-wide; right-click on empty tree space
+  // gets our own root menu instead (a node row sets its own menu and we leave it)
+  function onPanelContextMenu(e: MouseEvent) {
+    e.preventDefault();
+    const t = e.target as HTMLElement;
+    if (t.closest(".row")) return;
+    if (bodyEl?.contains(t) && home) {
+      menu = { x: e.clientX, y: e.clientY, kind: "root" };
+    } else {
+      menu = null;
+    }
+  }
+
+  function collapseAll() {
+    treeVersion++;
   }
 
   function newFolderAtRoot() {
@@ -94,8 +129,10 @@
       placeholder: "folder name",
       confirmLabel: "CREATE",
       run: async (name) => {
-        await sftpMkdir(sessionId, joinPath(home, name));
+        const path = joinPath(home, name);
+        await sftpMkdir(sessionId, path);
         await reloadRoot();
+        flashNew(path);
       },
     };
   }
@@ -111,6 +148,7 @@
         const path = joinPath(home, name);
         await sftpCreateFile(sessionId, path);
         await reloadRoot();
+        flashNew(path);
         onOpenFile(sessionId, path);
       },
     };
@@ -128,6 +166,7 @@
         const path = joinPath(target.entry.path, name);
         await sftpCreateFile(sessionId, path);
         await target.reloadChildren?.();
+        flashNew(path);
         onOpenFile(sessionId, path);
       },
     };
@@ -142,8 +181,10 @@
       placeholder: "folder name",
       confirmLabel: "CREATE",
       run: async (name) => {
-        await sftpMkdir(sessionId, joinPath(target.entry.path, name));
+        const path = joinPath(target.entry.path, name);
+        await sftpMkdir(sessionId, path);
         await target.reloadChildren?.();
+        flashNew(path);
       },
     };
   }
@@ -202,6 +243,66 @@
     }
   }
 
+  function onTreeKeydown(e: KeyboardEvent) {
+    if (dialog) return;
+    const rows = bodyEl
+      ? [...bodyEl.querySelectorAll<HTMLButtonElement>(".row")]
+      : [];
+    if (rows.length === 0) return;
+
+    const i = rows.indexOf(document.activeElement as HTMLButtonElement);
+    const focusRow = (n: number) => {
+      const r = rows[Math.max(0, Math.min(n, rows.length - 1))];
+      r?.focus();
+      r?.scrollIntoView({ block: "nearest" });
+    };
+
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        focusRow(i < 0 ? 0 : i + 1);
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        focusRow(i < 0 ? rows.length - 1 : i - 1);
+        break;
+      case "Home":
+        e.preventDefault();
+        focusRow(0);
+        break;
+      case "End":
+        e.preventDefault();
+        focusRow(rows.length - 1);
+        break;
+      case "ArrowRight": {
+        e.preventDefault();
+        if (i < 0) return focusRow(0);
+        const row = rows[i];
+        if (row.dataset.dir !== "true") return;
+        if (row.dataset.expanded === "true") focusRow(i + 1);
+        else row.click();
+        break;
+      }
+      case "ArrowLeft": {
+        if (i < 0) return;
+        e.preventDefault();
+        const row = rows[i];
+        if (row.dataset.dir === "true" && row.dataset.expanded === "true") {
+          row.click();
+          return;
+        }
+        const depth = Number(row.dataset.depth ?? 0);
+        for (let j = i - 1; j >= 0; j--) {
+          if (Number(rows[j].dataset.depth ?? 0) < depth) {
+            focusRow(j);
+            break;
+          }
+        }
+        break;
+      }
+    }
+  }
+
   onMount(() => {
     const onDown = (e: MouseEvent) => {
       if (menuEl && !menuEl.contains(e.target as Node)) menu = null;
@@ -217,6 +318,7 @@
     return () => {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
+      clearTimeout(flashTimer);
     };
   });
 
@@ -235,7 +337,7 @@
   });
 </script>
 
-<aside class="file-browser">
+<aside class="file-browser" oncontextmenu={onPanelContextMenu}>
   <header class="fb-header">
     <span class="fb-title">FILES</span>
     <div class="fb-actions">
@@ -253,6 +355,7 @@
         title="New folder here"
         aria-label="New folder"
       >⊞</button>
+      <button class="fb-btn" onclick={collapseAll} title="Collapse all" aria-label="Collapse all">⊟</button>
       <button class="fb-btn" onclick={load} title="Refresh" aria-label="Refresh">⟳</button>
       <button class="fb-btn" onclick={onClose} title="Close" aria-label="Close">✕</button>
     </div>
@@ -266,13 +369,19 @@
     <div class="fb-banner" title={actionError}>{actionError}</div>
   {/if}
 
-  <div class="fb-body">
+  <div
+    class="fb-body"
+    bind:this={bodyEl}
+    role="tree"
+    tabindex="0"
+    onkeydown={onTreeKeydown}
+  >
     {#if loading}
       <div class="fb-state">MOUNTING FS...</div>
     {:else if error}
       <div class="fb-state err">{error}</div>
     {:else if root}
-      {#each root as entry (entry.path)}
+      {#each root as entry (entry.path + "::" + treeVersion)}
         <FileTreeNode
           {entry}
           {sessionId}
@@ -290,12 +399,18 @@
 
   {#if menu}
     <div bind:this={menuEl} class="fb-context" style="left: {menu.x}px; top: {menu.y}px;">
-      {#if menu.target.entry.is_dir}
-        <button class="fb-context-item" onclick={() => startNewFile(menu!.target)}>New File</button>
-        <button class="fb-context-item" onclick={() => startNewFolder(menu!.target)}>New Folder</button>
+      {#if menu.kind === "root"}
+        <button class="fb-context-item" onclick={() => { menu = null; newFileAtRoot(); }}>New File</button>
+        <button class="fb-context-item" onclick={() => { menu = null; newFolderAtRoot(); }}>New Folder</button>
+      {:else}
+        {@const target = menu.target}
+        {#if target.entry.is_dir}
+          <button class="fb-context-item" onclick={() => startNewFile(target)}>New File</button>
+          <button class="fb-context-item" onclick={() => startNewFolder(target)}>New Folder</button>
+        {/if}
+        <button class="fb-context-item" onclick={() => startRename(target)}>Rename</button>
+        <button class="fb-context-item danger" onclick={() => startDelete(target)}>Delete</button>
       {/if}
-      <button class="fb-context-item" onclick={() => startRename(menu!.target)}>Rename</button>
-      <button class="fb-context-item danger" onclick={() => startDelete(menu!.target)}>Delete</button>
     </div>
   {/if}
 
@@ -476,6 +591,15 @@
     z-index: 2000;
     padding: 0.25rem 0;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    transform-origin: top left;
+    animation: ctx-pop 95ms cubic-bezier(0.2, 0.9, 0.3, 1);
+  }
+
+  @keyframes ctx-pop {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
   }
 
   .fb-context-item {
@@ -513,6 +637,13 @@
     padding: 0.75rem;
     background: rgba(6, 6, 14, 0.6);
     backdrop-filter: blur(2px);
+    animation: scrim-fade 120ms ease;
+  }
+
+  @keyframes scrim-fade {
+    from {
+      opacity: 0;
+    }
   }
 
   .fb-dialog {
@@ -529,6 +660,14 @@
       8px 100%,
       0 calc(100% - 8px)
     );
+    animation: dialog-pop 140ms cubic-bezier(0.2, 0.9, 0.3, 1);
+  }
+
+  @keyframes dialog-pop {
+    from {
+      opacity: 0;
+      transform: translateY(6px) scale(0.98);
+    }
   }
 
   .fb-dialog-title {

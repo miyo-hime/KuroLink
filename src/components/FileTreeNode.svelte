@@ -1,6 +1,11 @@
 <script lang="ts">
+  import { getContext } from "svelte";
+  import { slide } from "svelte/transition";
+  import { cubicOut } from "svelte/easing";
   import type { SftpEntry, FileMenuTarget } from "../lib/types";
   import { sftpListDir } from "../lib/ipc";
+  import { fileGlyph, humanSize, formatMtime } from "../lib/fileKind";
+  import { HIGHLIGHT_KEY, type TreeHighlight } from "../lib/treeHighlight";
   import Self from "./FileTreeNode.svelte";
 
   interface Props {
@@ -13,6 +18,9 @@
   }
 
   let { entry, sessionId, depth, reloadList, onContextMenu, onOpenFile }: Props = $props();
+
+  const highlight = getContext<TreeHighlight>(HIGHLIGHT_KEY);
+  let isNew = $derived(highlight?.path === entry.path);
 
   let expanded = $state(false);
   let children = $state<SftpEntry[] | null>(null);
@@ -64,24 +72,36 @@
       reloadChildren: entry.is_dir ? expandReload : undefined,
     });
   }
+
+  let rowTitle = $derived(
+    entry.is_dir
+      ? entry.path
+      : `${entry.path}\n${humanSize(entry.size)}${entry.modified ? ` · ${formatMtime(entry.modified)}` : ""}`,
+  );
 </script>
 
 <div class="node">
   <button
     class="row {entry.is_dir ? 'is-dir' : 'is-file'}"
+    class:just-created={isNew}
     style="padding-left: {depth * 14 + 8}px"
     onclick={onRowClick}
     oncontextmenu={rowContextMenu}
-    title={entry.path}
+    title={rowTitle}
+    tabindex={-1}
+    data-dir={entry.is_dir}
+    data-expanded={expanded}
+    data-depth={depth}
   >
     {#if entry.is_dir}
       <span class="twisty" class:open={expanded}>▸</span>
     {:else}
       <span class="twisty spacer"></span>
     {/if}
-    <span class="glyph">{entry.is_dir ? "▣" : "·"}</span>
+    <span class="glyph">{entry.is_dir ? "▣" : fileGlyph(entry.name)}</span>
     <span class="name">{entry.name}</span>
     {#if entry.is_symlink}<span class="link-mark">→</span>{/if}
+    {#if !entry.is_dir}<span class="size">{humanSize(entry.size)}</span>{/if}
   </button>
 
   {#if loading}
@@ -92,20 +112,22 @@
   {/if}
 
   {#if expanded && children}
-    {#if children.length === 0}
-      <div class="hint dim" style="padding-left: {(depth + 1) * 14 + 8}px">empty</div>
-    {:else}
-      {#each children as child (child.path)}
-        <Self
-          entry={child}
-          {sessionId}
-          depth={depth + 1}
-          reloadList={reloadChildren}
-          {onContextMenu}
-          {onOpenFile}
-        />
-      {/each}
-    {/if}
+    <div class="children" transition:slide={{ duration: 140, easing: cubicOut }}>
+      {#if children.length === 0}
+        <div class="hint dim" style="padding-left: {(depth + 1) * 14 + 8}px">empty</div>
+      {:else}
+        {#each children as child (child.path)}
+          <Self
+            entry={child}
+            {sessionId}
+            depth={depth + 1}
+            reloadList={reloadChildren}
+            {onContextMenu}
+            {onOpenFile}
+          />
+        {/each}
+      {/if}
+    </div>
   {/if}
 </div>
 
@@ -136,6 +158,34 @@
   .row:hover {
     background: rgba(var(--accent-rgb), 0.07);
     color: var(--text-primary);
+  }
+
+  /* a freshly created file/folder pulses once so you can spot where it landed */
+  .row.just-created {
+    animation: just-created 1.1s ease-out;
+  }
+
+  @keyframes just-created {
+    0%,
+    15% {
+      background: rgba(var(--accent-rgb), 0.28);
+      color: var(--text-primary);
+    }
+    100% {
+      background: transparent;
+    }
+  }
+
+  /* keyboard focus doubles as selection */
+  .row:focus {
+    outline: none;
+    background: rgba(var(--accent-rgb), 0.12);
+    color: var(--text-primary);
+    box-shadow: inset 2px 0 0 var(--accent-primary);
+  }
+
+  .row:focus .size {
+    color: var(--text-secondary);
   }
 
   .is-dir .name {
@@ -169,13 +219,25 @@
   }
 
   .name {
+    flex: 1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   .link-mark {
+    flex-shrink: 0;
     color: var(--text-dim);
     font-size: 0.65rem;
+  }
+
+  .size {
+    flex-shrink: 0;
+    margin-left: 0.5rem;
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+    opacity: 0.75;
   }
 
   .hint {

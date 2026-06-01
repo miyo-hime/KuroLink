@@ -83,6 +83,17 @@
   // sftp needs a live ssh session - local tabs and dead links don't get the panel
   let filesAvailable = $derived(activeSessionId != null && !isActiveLost);
 
+  // first time a live ssh session lands in focus, swing the browser open - if you're
+  // on a remote box you almost certainly want its fs in view. once only (plain flag,
+  // not $state), so closing it sticks and reconnects/tab-hops don't keep re-popping it.
+  let hasAutoOpenedFiles = false;
+  $effect(() => {
+    if (filesAvailable && !hasAutoOpenedFiles) {
+      hasAutoOpenedFiles = true;
+      filesVisible = true;
+    }
+  });
+
   // open a shell on an existing ssh session (used for initial tab + "+" duplication)
   async function createSshTabFromSession(sessionId: string, profile: ConnectionProfile) {
     try {

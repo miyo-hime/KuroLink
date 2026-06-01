@@ -5,9 +5,11 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::timeout;
 
-// the editor is for configs/scripts, not blobs. cap the read so a giant file -
-// or an endless one like a fifo or a live log - can't wedge the whole app.
-const MAX_EDIT_BYTES: u64 = 5 * 1024 * 1024;
+// the editor is for configs/scripts/logs, not blobs. cap the read so a giant file -
+// or an endless one like a fifo or a live log - can't wedge the whole app. 10MB is
+// comfy over a single-string ipc; the real ceiling is the textarea render, which
+// codemirror will lift later. don't push this past ~25MB without a virtualized editor.
+const MAX_EDIT_BYTES: u64 = 10 * 1024 * 1024;
 // hard ceiling so a dead reply task can never leave the frontend spinning forever
 const FILE_OP_TIMEOUT: Duration = Duration::from_secs(20);
 
