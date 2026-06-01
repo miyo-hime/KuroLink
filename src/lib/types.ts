@@ -61,12 +61,15 @@ export const DEFAULT_LOCAL_SHELLS: LocalShellInfo[] = [
   { id: "nu", label: "Nushell", shortLabel: "NU", subtitle: "NUSHELL", detected: true, available: false },
 ];
 
-// tab backends - ssh or local, frontend doesn't care which for terminal IO
+// tab backends - terminal IO doesn't care ssh vs local; editor is a non-PTY tab
 export type TabBackend =
   | { kind: "ssh"; sessionId: string; profileId: string; profileName: string }
-  | { kind: "local"; shellType: LocalShellId };
+  | { kind: "local"; shellType: LocalShellId }
+  | { kind: "editor"; sessionId: string; path: string };
 
 export interface TerminalTab {
+  // the tab's unique key. for ssh/local it's the real PTY channel; for editor
+  // tabs it's a synthetic `editor:<uuid>` (no channel behind it).
   channelId: string;
   title: string;
   backend: TabBackend;
@@ -93,4 +96,13 @@ export interface SftpEntry {
   is_symlink: boolean;
   size: number;
   modified: number | null;
+}
+
+// what a right-clicked tree row hands up to the browser's context menu.
+// reloadList refreshes the list this entry lives in (delete/rename land here);
+// reloadChildren refreshes the entry's OWN children (only dirs, for new-folder-inside).
+export interface FileMenuTarget {
+  entry: SftpEntry;
+  reloadList: () => Promise<void>;
+  reloadChildren?: () => Promise<void>;
 }

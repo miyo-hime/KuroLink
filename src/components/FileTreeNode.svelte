@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { SftpEntry } from "../lib/types";
+  import type { SftpEntry, FileMenuTarget } from "../lib/types";
   import { sftpListDir } from "../lib/ipc";
   import Self from "./FileTreeNode.svelte";
 
@@ -7,14 +7,25 @@
     entry: SftpEntry;
     sessionId: string;
     depth: number;
+    reloadList: () => Promise<void>;
+    onContextMenu: (e: MouseEvent, target: FileMenuTarget) => void;
+    onOpenFile: (sessionId: string, path: string) => void;
   }
 
-  let { entry, sessionId, depth }: Props = $props();
+  let { entry, sessionId, depth, reloadList, onContextMenu, onOpenFile }: Props = $props();
 
   let expanded = $state(false);
   let children = $state<SftpEntry[] | null>(null);
   let loading = $state(false);
   let error = $state<string | null>(null);
+
+  function onRowClick() {
+    if (entry.is_dir) {
+      toggle();
+    } else {
+      onOpenFile(sessionId, entry.path);
+    }
+  }
 
   async function toggle() {
     if (!entry.is_dir) return;
@@ -32,13 +43,35 @@
     }
     expanded = !expanded;
   }
+
+  // re-list only if we've already opened this dir (delete/rename of a child lands here)
+  async function reloadChildren() {
+    if (children !== null) {
+      children = await sftpListDir(sessionId, entry.path);
+    }
+  }
+
+  // load + force open - used after dropping a new folder inside a collapsed dir
+  async function expandReload() {
+    children = await sftpListDir(sessionId, entry.path);
+    expanded = true;
+  }
+
+  function rowContextMenu(e: MouseEvent) {
+    onContextMenu(e, {
+      entry,
+      reloadList,
+      reloadChildren: entry.is_dir ? expandReload : undefined,
+    });
+  }
 </script>
 
 <div class="node">
   <button
     class="row {entry.is_dir ? 'is-dir' : 'is-file'}"
     style="padding-left: {depth * 14 + 8}px"
-    onclick={toggle}
+    onclick={onRowClick}
+    oncontextmenu={rowContextMenu}
     title={entry.path}
   >
     {#if entry.is_dir}
@@ -63,7 +96,14 @@
       <div class="hint dim" style="padding-left: {(depth + 1) * 14 + 8}px">empty</div>
     {:else}
       {#each children as child (child.path)}
-        <Self entry={child} {sessionId} depth={depth + 1} />
+        <Self
+          entry={child}
+          {sessionId}
+          depth={depth + 1}
+          reloadList={reloadChildren}
+          {onContextMenu}
+          {onOpenFile}
+        />
       {/each}
     {/if}
   {/if}

@@ -5,6 +5,7 @@
   interface Props {
     tabs: TerminalTab[];
     activeTabId: string | null;
+    dirtyTabs: Set<string>;
     profiles: ConnectionProfile[];
     onSelectTab: (channelId: string) => void;
     onCloseTab: (channelId: string) => void;
@@ -18,6 +19,7 @@
   let {
     tabs,
     activeTabId,
+    dirtyTabs,
     profiles,
     onSelectTab,
     onCloseTab,
@@ -169,11 +171,14 @@
       >
         {#if tab.backend.kind === "ssh"}
           <span class="tab-indicator tab-indicator-ssh" title="SSH: {tab.backend.profileName}"></span>
+        {:else if tab.backend.kind === "editor"}
+          <span class="tab-indicator tab-indicator-editor" title="Editing: {tab.backend.path}"></span>
         {:else}
           <span class="tab-indicator tab-indicator-local" title="Local: {tab.backend.shellType}"></span>
         {/if}
         <span class="tab-index">{index + 1}.</span>
         <span class="tab-title">{tab.title}</span>
+        {#if dirtyTabs.has(tab.channelId)}<span class="tab-dirty" title="Unsaved changes">●</span>{/if}
         <button
           class="tab-close"
           onclick={(e) => {
@@ -377,6 +382,12 @@
     box-shadow: 0 0 4px #8ccc26;
   }
 
+  .tab-indicator-editor {
+    background: var(--accent-warning);
+    box-shadow: 0 0 4px var(--accent-warning);
+    border-radius: 1px;
+  }
+
   .tab-index {
     color: var(--text-dim);
     font-size: 0.6rem;
@@ -390,6 +401,13 @@
 
   .tab-title {
     text-transform: uppercase;
+  }
+
+  .tab-dirty {
+    color: var(--accent-warning);
+    font-size: 0.5rem;
+    line-height: 1;
+    flex-shrink: 0;
   }
 
   .tab-close {

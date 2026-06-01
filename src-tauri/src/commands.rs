@@ -841,6 +841,16 @@ pub async fn sftp_write_file(
 }
 
 #[tauri::command]
+pub async fn sftp_create_file(
+    state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+) -> Result<(), String> {
+    let sftp = sftp_for(&state, &session_id).await?;
+    sftp::create_file(&sftp, &path).await
+}
+
+#[tauri::command]
 pub async fn sftp_mkdir(
     state: State<'_, AppState>,
     session_id: String,

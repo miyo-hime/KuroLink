@@ -20,6 +20,7 @@
   import TabBar from "./TabBar.svelte";
   import StatusBar from "./StatusBar.svelte";
   import FileBrowser from "./FileBrowser.svelte";
+  import EditorPanel from "./EditorPanel.svelte";
 
   interface Props {
     initialSessionId: string | null;
@@ -42,6 +43,9 @@
   let prevStats = $state<SystemStats | null>(null);
   let searchVisible = $state(false);
   let filesVisible = $state(false);
+  // editor dirty state lives OUTSIDE tabs on purpose - writing it into a tab object
+  // would reassign `tabs` on every keystroke and yank focus out of the textarea
+  let dirtyTabs = $state<Set<string>>(new Set());
   let lostSessions = $state<Set<string>>(new Set());
   let reconnecting = $state(false);
   let profiles = $state<ConnectionProfile[]>([]);
@@ -56,19 +60,25 @@
   // derived state from active tab
   let activeTab = $derived(tabs.find((t) => t.channelId === activeTabId));
   let activeSessionId = $derived(
-    activeTab?.backend.kind === "ssh" ? activeTab.backend.sessionId : null,
+    activeTab && (activeTab.backend.kind === "ssh" || activeTab.backend.kind === "editor")
+      ? activeTab.backend.sessionId
+      : null,
   );
   let activeHostname = $derived(
     activeTab?.backend.kind === "ssh"
       ? activeTab.backend.profileName
-      : activeTab?.backend.kind === "local"
-        ? activeTab.backend.shellType.toUpperCase()
-        : "",
+      : activeTab?.backend.kind === "editor"
+        ? basename(activeTab.backend.path)
+        : activeTab?.backend.kind === "local"
+          ? activeTab.backend.shellType.toUpperCase()
+          : "",
   );
   let isActiveLost = $derived(activeSessionId ? lostSessions.has(activeSessionId) : false);
   let connectionStatus = $derived<ConnectionStatus>(isActiveLost ? "lost" : "connected");
   let activeLatency = $derived(
-    activeTab?.backend.kind === "ssh" && stats ? stats.latency_ms : null,
+    (activeTab?.backend.kind === "ssh" || activeTab?.backend.kind === "editor") && stats
+      ? stats.latency_ms
+      : null,
   );
   // sftp needs a live ssh session - local tabs and dead links don't get the panel
   let filesAvailable = $derived(activeSessionId != null && !isActiveLost);
@@ -126,6 +136,43 @@
     }
   }
 
+  function basename(p: string): string {
+    const i = p.lastIndexOf("/");
+    return i < 0 ? p : p.slice(i + 1);
+  }
+
+  // open a remote file in an editor tab (or focus it if already open)
+  function openEditorTab(sessionId: string, path: string) {
+    const existing = tabs.find(
+      (t) =>
+        t.backend.kind === "editor" &&
+        t.backend.sessionId === sessionId &&
+        t.backend.path === path,
+    );
+    if (existing) {
+      activeTabId = existing.channelId;
+      return;
+    }
+    const channelId = `editor:${crypto.randomUUID()}`;
+    const tab: TerminalTab = {
+      channelId,
+      title: basename(path),
+      backend: { kind: "editor", sessionId, path },
+    };
+    tabs = [...tabs, tab];
+    activeTabId = channelId;
+  }
+
+  // editor panel tells us when its buffer diverges - tracked off to the side so
+  // the tab strip can show a dot without disturbing the editor's DOM
+  function setEditorDirty(channelId: string, dirty: boolean) {
+    if (dirtyTabs.has(channelId) === dirty) return;
+    const next = new Set(dirtyTabs);
+    if (dirty) next.add(channelId);
+    else next.delete(channelId);
+    dirtyTabs = next;
+  }
+
   function handleReorderTabs(fromIndex: number, toIndex: number) {
     const next = [...tabs];
     const [moved] = next.splice(fromIndex, 1);
@@ -138,23 +185,33 @@
     const tab = activeTab;
     if (!tab) return;
 
-    if (tab.backend.kind === "ssh") {
-      const { sessionId, profileId, profileName } = tab.backend;
-      try {
-        const channelId = await openShell(sessionId, 80, 24);
-        tabCount += 1;
-        const newTab: TerminalTab = {
-          channelId,
-          title: `${profileName} ${tabCount}`,
-          backend: { kind: "ssh", sessionId, profileId, profileName },
-        };
-        tabs = [...tabs, newTab];
-        activeTabId = channelId;
-      } catch (e) {
-        console.error("failed to open shell:", e);
-      }
-    } else {
+    if (tab.backend.kind === "local") {
       await createLocalTab(tab.backend.shellType);
+      return;
+    }
+
+    // ssh tab clones directly; an editor tab has no PTY so we drop a shell on
+    // the same host by borrowing a sibling ssh tab's profile
+    const sessionId = tab.backend.sessionId;
+    const sib =
+      tab.backend.kind === "ssh"
+        ? tab
+        : tabs.find((t) => t.backend.kind === "ssh" && t.backend.sessionId === sessionId);
+    if (!sib || sib.backend.kind !== "ssh") return;
+
+    const { profileId, profileName } = sib.backend;
+    try {
+      const channelId = await openShell(sessionId, 80, 24);
+      tabCount += 1;
+      const newTab: TerminalTab = {
+        channelId,
+        title: `${profileName} ${tabCount}`,
+        backend: { kind: "ssh", sessionId, profileId, profileName },
+      };
+      tabs = [...tabs, newTab];
+      activeTabId = channelId;
+    } catch (e) {
+      console.error("failed to open shell:", e);
     }
   }
 
@@ -163,7 +220,14 @@
     const closing = tabs.find((t) => t.channelId === channelId);
     if (closing) closedTabStack.push(closing);
 
-    await closeShell(channelId).catch(() => {});
+    // editor tabs have no PTY behind them, nothing to tear down on the backend
+    if (closing?.backend.kind !== "editor") {
+      await closeShell(channelId).catch(() => {});
+    } else if (dirtyTabs.has(channelId)) {
+      const nextDirty = new Set(dirtyTabs);
+      nextDirty.delete(channelId);
+      dirtyTabs = nextDirty;
+    }
     const next = tabs.filter((t) => t.channelId !== channelId);
     if (channelId === activeTabId && next.length > 0) {
       activeTabId = next[next.length - 1].channelId;
@@ -278,6 +342,8 @@
     if (!last) return;
     if (last.backend.kind === "ssh") {
       await createSshTabFromProfile(last.backend.profileId);
+    } else if (last.backend.kind === "editor") {
+      openEditorTab(last.backend.sessionId, last.backend.path);
     } else {
       await createLocalTab(last.backend.shellType);
     }
@@ -358,7 +424,10 @@
       statsInFlight = true;
       try {
         let sysStats: SystemStats;
-        if (tab.backend.kind === "ssh" && !lostSessions.has(tab.backend.sessionId)) {
+        if (
+          (tab.backend.kind === "ssh" || tab.backend.kind === "editor") &&
+          !lostSessions.has(tab.backend.sessionId)
+        ) {
           sysStats = await fetchSystemStats(tab.backend.sessionId);
         } else {
           sysStats = await fetchLocalStats();
@@ -396,6 +465,7 @@
   <TabBar
     {tabs}
     {activeTabId}
+    {dirtyTabs}
     {profiles}
     onSelectTab={(id) => (activeTabId = id)}
     onCloseTab={handleCloseTab}
@@ -407,19 +477,33 @@
   />
   <div class="work-area">
     {#if filesVisible && activeSessionId && !isActiveLost}
-      <FileBrowser sessionId={activeSessionId} onClose={() => (filesVisible = false)} />
+      <FileBrowser
+        sessionId={activeSessionId}
+        onClose={() => (filesVisible = false)}
+        onOpenFile={openEditorTab}
+      />
     {/if}
     <div class="terminal-area">
     {#if TerminalPanel}
       {#each tabs as tab (tab.channelId)}
-        <TerminalPanel
-          channelId={tab.channelId}
-          active={tab.channelId === activeTabId}
-          searchVisible={searchVisible && tab.channelId === activeTabId}
-          onSearchToggle={() => (searchVisible = !searchVisible)}
-          onClosed={() => handleCloseTab(tab.channelId)}
-          onTitleChange={(title) => handleTabTitleChange(tab.channelId, title)}
-        />
+        {#if tab.backend.kind === "editor"}
+          <EditorPanel
+            channelId={tab.channelId}
+            sessionId={tab.backend.sessionId}
+            path={tab.backend.path}
+            active={tab.channelId === activeTabId}
+            onDirtyChange={setEditorDirty}
+          />
+        {:else}
+          <TerminalPanel
+            channelId={tab.channelId}
+            active={tab.channelId === activeTabId}
+            searchVisible={searchVisible && tab.channelId === activeTabId}
+            onSearchToggle={() => (searchVisible = !searchVisible)}
+            onClosed={() => handleCloseTab(tab.channelId)}
+            onTitleChange={(title) => handleTabTitleChange(tab.channelId, title)}
+          />
+        {/if}
       {/each}
     {:else}
       <div class="terminal-loading">ALLOCATING PTY...</div>

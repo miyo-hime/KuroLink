@@ -1,5 +1,15 @@
 use russh_sftp::client::SftpSession;
+use russh_sftp::protocol::OpenFlags;
 use serde::Serialize;
+use std::time::Duration;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::time::timeout;
+
+// the editor is for configs/scripts, not blobs. cap the read so a giant file -
+// or an endless one like a fifo or a live log - can't wedge the whole app.
+const MAX_EDIT_BYTES: u64 = 5 * 1024 * 1024;
+// hard ceiling so a dead reply task can never leave the frontend spinning forever
+const FILE_OP_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[derive(Serialize, Clone)]
 pub struct SftpEntry {
@@ -59,17 +69,68 @@ pub async fn realpath(sftp: &SftpSession, path: &str) -> Result<String, String> 
 }
 
 pub async fn read_file(sftp: &SftpSession, path: &str) -> Result<String, String> {
-    let bytes = sftp
-        .read(path)
+    let read = async {
+        let file = sftp
+            .open(path)
+            .await
+            .map_err(|e| format!("open failed: {e}"))?;
+        let mut buf = Vec::new();
+        file.take(MAX_EDIT_BYTES + 1)
+            .read_to_end(&mut buf)
+            .await
+            .map_err(|e| format!("read failed: {e}"))?;
+        Ok::<_, String>(buf)
+    };
+
+    let buf = timeout(FILE_OP_TIMEOUT, read)
         .await
-        .map_err(|e| format!("read failed: {e}"))?;
-    Ok(String::from_utf8_lossy(&bytes).to_string())
+        .map_err(|_| "read timed out - the host didn't answer in time".to_string())??;
+
+    if buf.len() as u64 > MAX_EDIT_BYTES {
+        return Err(format!(
+            "file is over {} MB - too big to open in the editor",
+            MAX_EDIT_BYTES / (1024 * 1024)
+        ));
+    }
+
+    Ok(String::from_utf8_lossy(&buf).to_string())
 }
 
 pub async fn write_file(sftp: &SftpSession, path: &str, contents: String) -> Result<(), String> {
-    sftp.write(path, contents.as_bytes())
+    // russh-sftp's write() convenience opens WRITE-only: no CREATE (can't make new
+    // files) and no TRUNCATE (a shorter save leaves the old tail as garbage). open
+    // it ourselves with both so saves are honest.
+    let write = async {
+        let mut file = sftp
+            .open_with_flags(
+                path,
+                OpenFlags::CREATE | OpenFlags::WRITE | OpenFlags::TRUNCATE,
+            )
+            .await
+            .map_err(|e| format!("open failed: {e}"))?;
+        file.write_all(contents.as_bytes())
+            .await
+            .map_err(|e| format!("write failed: {e}"))?;
+        file.flush()
+            .await
+            .map_err(|e| format!("flush failed: {e}"))?;
+        Ok::<_, String>(())
+    };
+    timeout(FILE_OP_TIMEOUT, write)
         .await
-        .map_err(|e| format!("write failed: {e}"))
+        .map_err(|_| "write timed out - the host didn't answer in time".to_string())?
+}
+
+pub async fn create_file(sftp: &SftpSession, path: &str) -> Result<(), String> {
+    // CREATE|EXCLUDE makes the server refuse if the path already exists, so a new
+    // file never silently clobbers something. the handle closes on drop.
+    sftp.open_with_flags(
+        path,
+        OpenFlags::CREATE | OpenFlags::WRITE | OpenFlags::EXCLUDE,
+    )
+    .await
+    .map(|_| ())
+    .map_err(|e| format!("create failed: {e}"))
 }
 
 pub async fn make_dir(sftp: &SftpSession, path: &str) -> Result<(), String> {

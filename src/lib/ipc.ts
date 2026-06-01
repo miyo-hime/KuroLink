@@ -136,6 +136,9 @@ export const sftpReadFile = (sessionId: string, path: string) =>
 export const sftpWriteFile = (sessionId: string, path: string, contents: string) =>
   invoke<void>("sftp_write_file", { sessionId, path, contents });
 
+export const sftpCreateFile = (sessionId: string, path: string) =>
+  invoke<void>("sftp_create_file", { sessionId, path });
+
 export const sftpMkdir = (sessionId: string, path: string) =>
   invoke<void>("sftp_mkdir", { sessionId, path });
 
