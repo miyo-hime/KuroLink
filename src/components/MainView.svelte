@@ -20,7 +20,6 @@
   import TabBar from "./TabBar.svelte";
   import StatusBar from "./StatusBar.svelte";
   import FileBrowser from "./FileBrowser.svelte";
-  import EditorPanel from "./EditorPanel.svelte";
 
   interface Props {
     initialSessionId: string | null;
@@ -36,6 +35,13 @@
   // ghostty chunk is heavy (inlined wasm), so the panel stays its own lazy import -
   // the connect screen never pays for it
   let TerminalPanel = $state<typeof import("./TerminalPanel.svelte")["default"] | null>(null);
+  // codemirror rides this chunk; only pull it the first time a file actually opens, so
+  // a pure-terminal session never pays for the editor
+  let EditorPanel = $state<typeof import("./EditorPanel.svelte")["default"] | null>(null);
+
+  function ensureEditorPanel() {
+    if (!EditorPanel) import("./EditorPanel.svelte").then((m) => (EditorPanel = m.default));
+  }
 
   let tabs = $state<TerminalTab[]>([]);
   let activeTabId = $state<string | null>(null);
@@ -154,6 +160,7 @@
 
   // open a remote file in an editor tab (or focus it if already open)
   function openEditorTab(sessionId: string, path: string) {
+    ensureEditorPanel();
     const existing = tabs.find(
       (t) =>
         t.backend.kind === "editor" &&
@@ -498,13 +505,17 @@
     {#if TerminalPanel}
       {#each tabs as tab (tab.channelId)}
         {#if tab.backend.kind === "editor"}
-          <EditorPanel
-            channelId={tab.channelId}
-            sessionId={tab.backend.sessionId}
-            path={tab.backend.path}
-            active={tab.channelId === activeTabId}
-            onDirtyChange={setEditorDirty}
-          />
+          {#if EditorPanel}
+            <EditorPanel
+              channelId={tab.channelId}
+              sessionId={tab.backend.sessionId}
+              path={tab.backend.path}
+              active={tab.channelId === activeTabId}
+              onDirtyChange={setEditorDirty}
+            />
+          {:else}
+            <div class="terminal-loading">OPENING EDITOR...</div>
+          {/if}
         {:else}
           <TerminalPanel
             channelId={tab.channelId}

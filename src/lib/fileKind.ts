@@ -100,6 +100,33 @@ export function fileGlyph(name: string): string {
   return GLYPH_BY_EXT[ext] ?? DEFAULT_GLYPH;
 }
 
+// the editor opens these in a viewer instead of codemirror. narrower than the ▦ glyph
+// set on purpose - psd/raw/tiff get the image mark but webview2 (chromium) won't render
+// them in an <img>, so they stay out. svg is NOT here: it's editable markup, opens in cm6.
+const IMAGE_MIME: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  bmp: "image/bmp",
+  ico: "image/x-icon",
+  avif: "image/avif",
+};
+
+function ext(name: string): string {
+  const dot = name.lastIndexOf(".");
+  return dot <= 0 ? "" : name.slice(dot + 1).toLowerCase();
+}
+
+export function isImage(name: string): boolean {
+  return ext(name) in IMAGE_MIME;
+}
+
+export function imageMime(name: string): string {
+  return IMAGE_MIME[ext(name)] ?? "application/octet-stream";
+}
+
 export function humanSize(bytes: number): string {
   if (bytes < 1024) return `${bytes}B`;
   const units = ["K", "M", "G", "T"];

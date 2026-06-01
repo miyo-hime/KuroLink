@@ -829,6 +829,19 @@ pub async fn sftp_read_file(
     sftp::read_file(&sftp, &path).await
 }
 
+/// read a file as raw bytes (for the image viewer / future downloads). returns a
+/// tauri Response so the bytes reach js as an ArrayBuffer - no base64 inflation.
+#[tauri::command]
+pub async fn sftp_read_bytes(
+    state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+) -> Result<tauri::ipc::Response, String> {
+    let sftp = sftp_for(&state, &session_id).await?;
+    let bytes = sftp::read_bytes(&sftp, &path).await?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 #[tauri::command]
 pub async fn sftp_write_file(
     state: State<'_, AppState>,

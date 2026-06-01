@@ -5,13 +5,14 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::timeout;
 
-// the editor is for configs/scripts/logs, not blobs. cap the read so a giant file -
-// or an endless one like a fifo or a live log - can't wedge the whole app. 10MB is
-// comfy over a single-string ipc; the real ceiling is the textarea render, which
-// codemirror will lift later. don't push this past ~25MB without a virtualized editor.
-const MAX_EDIT_BYTES: u64 = 10 * 1024 * 1024;
-// hard ceiling so a dead reply task can never leave the frontend spinning forever
-const FILE_OP_TIMEOUT: Duration = Duration::from_secs(20);
+// cap the read so a giant file - or an endless one like a fifo or a live log - can't
+// wedge the whole app. codemirror is viewport-virtualized so the editor render isn't
+// the ceiling anymore; this is now a transport guard. 50MB covers ~every config, script,
+// log, and reasonable image. images and text share the cap - one number, easy to reason about.
+const MAX_FILE_BYTES: u64 = 50 * 1024 * 1024;
+// hard ceiling so a dead reply task can never leave the frontend spinning forever.
+// 60s because 50MB over a poky link shouldn't false-fail - it's a ceiling, not a delay.
+const FILE_OP_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Serialize, Clone)]
 pub struct SftpEntry {
@@ -70,14 +71,14 @@ pub async fn realpath(sftp: &SftpSession, path: &str) -> Result<String, String> 
         .map_err(|e| format!("canonicalize failed: {e}"))
 }
 
-pub async fn read_file(sftp: &SftpSession, path: &str) -> Result<String, String> {
+async fn read_capped(sftp: &SftpSession, path: &str) -> Result<Vec<u8>, String> {
     let read = async {
         let file = sftp
             .open(path)
             .await
             .map_err(|e| format!("open failed: {e}"))?;
         let mut buf = Vec::new();
-        file.take(MAX_EDIT_BYTES + 1)
+        file.take(MAX_FILE_BYTES + 1)
             .read_to_end(&mut buf)
             .await
             .map_err(|e| format!("read failed: {e}"))?;
@@ -88,14 +89,25 @@ pub async fn read_file(sftp: &SftpSession, path: &str) -> Result<String, String>
         .await
         .map_err(|_| "read timed out - the host didn't answer in time".to_string())??;
 
-    if buf.len() as u64 > MAX_EDIT_BYTES {
+    if buf.len() as u64 > MAX_FILE_BYTES {
         return Err(format!(
-            "file is over {} MB - too big to open in the editor",
-            MAX_EDIT_BYTES / (1024 * 1024)
+            "file is over {} MB - too big to open",
+            MAX_FILE_BYTES / (1024 * 1024)
         ));
     }
 
+    Ok(buf)
+}
+
+pub async fn read_file(sftp: &SftpSession, path: &str) -> Result<String, String> {
+    let buf = read_capped(sftp, path).await?;
     Ok(String::from_utf8_lossy(&buf).to_string())
+}
+
+// the bytes path images ride on - no utf-8 round-trip to mangle them. it's also the
+// foundation the transfer-queue slice's download will reuse.
+pub async fn read_bytes(sftp: &SftpSession, path: &str) -> Result<Vec<u8>, String> {
+    read_capped(sftp, path).await
 }
 
 pub async fn write_file(sftp: &SftpSession, path: &str, contents: String) -> Result<(), String> {

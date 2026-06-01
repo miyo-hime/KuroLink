@@ -133,6 +133,10 @@ export const sftpRealpath = (sessionId: string, path: string) =>
 export const sftpReadFile = (sessionId: string, path: string) =>
   invoke<string>("sftp_read_file", { sessionId, path });
 
+// the command returns a tauri Response, so this lands as an ArrayBuffer
+export const sftpReadBytes = (sessionId: string, path: string) =>
+  invoke<ArrayBuffer>("sftp_read_bytes", { sessionId, path });
+
 export const sftpWriteFile = (sessionId: string, path: string, contents: string) =>
   invoke<void>("sftp_write_file", { sessionId, path, contents });
 
