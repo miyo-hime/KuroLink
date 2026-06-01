@@ -152,6 +152,21 @@ export const sftpRemove = (sessionId: string, path: string) =>
 export const sftpRename = (sessionId: string, from: string, to: string) =>
   invoke<void>("sftp_rename", { sessionId, from, to });
 
+// -- Transfers (streamed in rust, progress via the transfer-progress event) --
+
+export const sftpDownload = (sessionId: string, remotePath: string, localPath: string, transferId: string) =>
+  invoke<void>("sftp_download", { sessionId, remotePath, localPath, transferId });
+
+export const sftpUpload = (sessionId: string, localPath: string, remotePath: string, transferId: string) =>
+  invoke<void>("sftp_upload", { sessionId, localPath, remotePath, transferId });
+
+// data is a Uint8Array - tauri v2 ships it over the efficient binary arg path
+export const sftpUploadBytes = (sessionId: string, path: string, data: Uint8Array, transferId: string) =>
+  invoke<void>("sftp_upload_bytes", { sessionId, path, data, transferId });
+
+export const cancelTransfer = (transferId: string) =>
+  invoke<void>("cancel_transfer", { transferId });
+
 // -- Event Listeners --
 
 export const onTerminalOutput = (

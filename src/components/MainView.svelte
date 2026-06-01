@@ -20,6 +20,8 @@
   import TabBar from "./TabBar.svelte";
   import StatusBar from "./StatusBar.svelte";
   import FileBrowser from "./FileBrowser.svelte";
+  import TransferTray from "./TransferTray.svelte";
+  import { transfers } from "../lib/transfers.svelte";
 
   interface Props {
     initialSessionId: string | null;
@@ -368,6 +370,7 @@
   }
 
   onMount(() => {
+    transfers.init();
     import("./TerminalPanel.svelte").then((m) => (TerminalPanel = m.default));
 
     if (initialLocalShell) {
@@ -549,6 +552,7 @@
     {/if}
     </div>
   </div>
+  <TransferTray />
   <StatusBar {stats} {prevStats} pollIntervalMs={STATS_POLL_MS} />
 </div>
 

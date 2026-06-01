@@ -65,7 +65,10 @@ mod win {
         let Some((x, y, w, h)) = MAX_BTN_RECT.lock().ok().and_then(|r| *r) else {
             return false;
         };
-        let mut pt = POINT { x: screen_x, y: screen_y };
+        let mut pt = POINT {
+            x: screen_x,
+            y: screen_y,
+        };
         unsafe {
             ScreenToClient(hwnd, &mut pt);
         }

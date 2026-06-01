@@ -1,8 +1,9 @@
 use russh_sftp::client::SftpSession;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 
 use crate::config::ConnectionProfile;
 use crate::local::{self, LocalShellInfo, LocalShellType};
@@ -892,6 +893,111 @@ pub async fn sftp_rename(
 ) -> Result<(), String> {
     let sftp = sftp_for(&state, &session_id).await?;
     sftp::rename(&sftp, &from, &to).await
+}
+
+// transfers - streamed in rust so a fat file never freezes a tab or buffers whole
+// in js. progress rides the "transfer-progress" event, throttled to ~256KB steps so
+// a big transfer doesn't carpet-bomb the webview.
+
+#[derive(Serialize, Clone)]
+struct TransferProgress {
+    id: String,
+    transferred: u64,
+    total: u64,
+}
+
+const PROGRESS_STEP: u64 = 256 * 1024;
+
+/// build the throttled progress closure shared by every transfer command
+fn progress_emitter(app: AppHandle, id: String) -> impl FnMut(u64, u64) {
+    let mut last: u64 = 0;
+    move |transferred, total| {
+        if transferred == total || transferred.saturating_sub(last) >= PROGRESS_STEP {
+            last = transferred;
+            let _ = app.emit(
+                "transfer-progress",
+                TransferProgress {
+                    id: id.clone(),
+                    transferred,
+                    total,
+                },
+            );
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn sftp_download(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    session_id: String,
+    remote_path: String,
+    local_path: String,
+    transfer_id: String,
+) -> Result<(), String> {
+    let sftp = sftp_for(&state, &session_id).await?;
+    let cancel = state.register_transfer(&transfer_id).await;
+    let on_progress = progress_emitter(app, transfer_id.clone());
+    let result = sftp::download(
+        &sftp,
+        &remote_path,
+        Path::new(&local_path),
+        &cancel,
+        on_progress,
+    )
+    .await;
+    state.finish_transfer(&transfer_id).await;
+    result
+}
+
+#[tauri::command]
+pub async fn sftp_upload(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    session_id: String,
+    local_path: String,
+    remote_path: String,
+    transfer_id: String,
+) -> Result<(), String> {
+    let sftp = sftp_for(&state, &session_id).await?;
+    let cancel = state.register_transfer(&transfer_id).await;
+    let on_progress = progress_emitter(app, transfer_id.clone());
+    let result = sftp::upload(
+        &sftp,
+        Path::new(&local_path),
+        &remote_path,
+        &cancel,
+        on_progress,
+    )
+    .await;
+    state.finish_transfer(&transfer_id).await;
+    result
+}
+
+#[tauri::command]
+pub async fn sftp_upload_bytes(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+    data: Vec<u8>,
+    transfer_id: String,
+) -> Result<(), String> {
+    let sftp = sftp_for(&state, &session_id).await?;
+    let cancel = state.register_transfer(&transfer_id).await;
+    let on_progress = progress_emitter(app, transfer_id.clone());
+    let result = sftp::write_bytes(&sftp, &path, &data, &cancel, on_progress).await;
+    state.finish_transfer(&transfer_id).await;
+    result
+}
+
+#[tauri::command]
+pub async fn cancel_transfer(
+    state: State<'_, AppState>,
+    transfer_id: String,
+) -> Result<(), String> {
+    state.cancel_transfer(&transfer_id).await;
+    Ok(())
 }
 
 // helpers

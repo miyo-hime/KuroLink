@@ -1,13 +1,17 @@
+<div align="center">
+
 # KuroLink
 
-Terminal emulator for people who think Windows Terminal is fine but wish it looked like a mecha command console. Built with Tauri 2.
+Terminal emulator for people who think Windows Terminal is fine but wish it looked like a mecha command console.
 
-[![Primary Repo](https://img.shields.io/badge/primary-Kurobox-purple?logo=forgejo)](https://codex.kurobox.me/miyo-rin/KuroLink)
-[![GitHub Mirror](https://img.shields.io/badge/mirror-GitHub-gray?logo=github)](https://github.com/miyo-hime/KuroLink)
-![Version](https://img.shields.io/badge/v0.11.1-orange)
-![License](https://img.shields.io/badge/license-Apache%202.0-blue)
-![Built with Tauri](https://img.shields.io/badge/Tauri%202-24C8D8?logo=tauri&logoColor=white)
-![Svelte 5](https://img.shields.io/badge/Svelte%205-FF3E00?logo=svelte&logoColor=white)
+[![Primary Repo](https://img.shields.io/badge/primary-Kurobox-purple?logo=forgejo&style=flat-square)](https://codex.kurobox.me/miyo-rin/KuroLink)
+[![GitHub Mirror](https://img.shields.io/badge/mirror-GitHub-gray?logo=github&style=flat-square)](https://github.com/miyo-hime/KuroLink)
+![Version](https://img.shields.io/badge/v0.11.1-orange?style=flat-square)
+![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)
+![Built with Tauri](https://img.shields.io/badge/Tauri%202-24C8D8?logo=tauri&logoColor=white&style=flat-square)
+![Svelte 5](https://img.shields.io/badge/Svelte%205-FF3E00?logo=svelte&logoColor=white&style=flat-square)
+
+</div>
 
 ## what is this
 
@@ -41,7 +45,7 @@ A terminal app. Local shells, SSH connection profiles, live system stats, tabs y
 
 **misc:**
 - portable - single `.exe`, config saves next to it, no installer
-- ~15MB binary because Tauri exists
+- ~8MB binary because Tauri exists
 - window state persistence (size, position, maximized)
 - connection profiles auto-save
 

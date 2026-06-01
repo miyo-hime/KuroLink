@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use sysinfo::{Disks, System};
 use tokio::sync::{mpsc, oneshot, Mutex};
@@ -60,6 +61,8 @@ pub struct AppState {
     pub launch_path: Mutex<Option<String>>,
     pub local_system: Mutex<System>,
     pub local_disks: Mutex<Disks>,
+    // live transfers, keyed by id -> "please stop" flag the streaming loop polls
+    pub transfers: Mutex<HashMap<String, Arc<AtomicBool>>>,
 }
 
 impl AppState {
@@ -74,7 +77,29 @@ impl AppState {
             launch_path: Mutex::new(launch_path),
             local_system: Mutex::new(System::new()),
             local_disks: Mutex::new(Disks::new_with_refreshed_list()),
+            transfers: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// hand the caller a fresh cancel flag and stash a clone so cancel_transfer
+    /// can flip it from another command while the stream runs lock-free
+    pub async fn register_transfer(&self, id: &str) -> Arc<AtomicBool> {
+        let flag = Arc::new(AtomicBool::new(false));
+        self.transfers
+            .lock()
+            .await
+            .insert(id.to_string(), flag.clone());
+        flag
+    }
+
+    pub async fn cancel_transfer(&self, id: &str) {
+        if let Some(flag) = self.transfers.lock().await.get(id) {
+            flag.store(true, Ordering::Relaxed);
+        }
+    }
+
+    pub async fn finish_transfer(&self, id: &str) {
+        self.transfers.lock().await.remove(id);
     }
 
     pub async fn get_config(&self, app: &tauri::AppHandle) -> Result<AppConfig, String> {

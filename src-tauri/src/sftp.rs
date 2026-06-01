@@ -1,9 +1,15 @@
 use russh_sftp::client::SftpSession;
 use russh_sftp::protocol::OpenFlags;
 use serde::Serialize;
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::timeout;
+
+// 64KB chunks for streamed transfers - big enough to keep the pipe busy, small
+// enough that cancel + progress react quickly
+const XFER_CHUNK: usize = 64 * 1024;
 
 // cap the read so a giant file - or an endless one like a fifo or a live log - can't
 // wedge the whole app. codemirror is viewport-virtualized so the editor render isn't
@@ -173,4 +179,149 @@ pub async fn rename(sftp: &SftpSession, from: &str, to: &str) -> Result<(), Stri
     sftp.rename(from, to)
         .await
         .map_err(|e| format!("rename failed: {e}"))
+}
+
+// transfers stream chunk-by-chunk and skip the file-op timeout on purpose: a real
+// transfer over a poky link can run for minutes, so the cancel flag is the escape
+// hatch instead of a wall-clock ceiling. progress(done, total) fires per chunk; the
+// caller throttles the actual emit.
+
+pub async fn download(
+    sftp: &SftpSession,
+    remote: &str,
+    local: &Path,
+    cancel: &AtomicBool,
+    mut progress: impl FnMut(u64, u64),
+) -> Result<(), String> {
+    let total = sftp
+        .metadata(remote)
+        .await
+        .map_err(|e| format!("stat failed: {e}"))?
+        .size
+        .unwrap_or(0);
+    let mut src = sftp
+        .open(remote)
+        .await
+        .map_err(|e| format!("open failed: {e}"))?;
+    let mut dst = tokio::fs::File::create(local)
+        .await
+        .map_err(|e| format!("local create failed: {e}"))?;
+
+    let mut buf = vec![0u8; XFER_CHUNK];
+    let mut done: u64 = 0;
+    progress(0, total);
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            drop(dst);
+            let _ = tokio::fs::remove_file(local).await;
+            return Err("transfer cancelled".to_string());
+        }
+        let n = src
+            .read(&mut buf)
+            .await
+            .map_err(|e| format!("read failed: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        dst.write_all(&buf[..n])
+            .await
+            .map_err(|e| format!("local write failed: {e}"))?;
+        done += n as u64;
+        progress(done, total.max(done));
+    }
+    dst.flush()
+        .await
+        .map_err(|e| format!("flush failed: {e}"))?;
+    progress(done, done);
+    Ok(())
+}
+
+pub async fn upload(
+    sftp: &SftpSession,
+    local: &Path,
+    remote: &str,
+    cancel: &AtomicBool,
+    mut progress: impl FnMut(u64, u64),
+) -> Result<(), String> {
+    let total = tokio::fs::metadata(local)
+        .await
+        .map_err(|e| format!("local stat failed: {e}"))?
+        .len();
+    let mut src = tokio::fs::File::open(local)
+        .await
+        .map_err(|e| format!("local open failed: {e}"))?;
+    let mut dst = sftp
+        .open_with_flags(
+            remote,
+            OpenFlags::CREATE | OpenFlags::WRITE | OpenFlags::TRUNCATE,
+        )
+        .await
+        .map_err(|e| format!("open failed: {e}"))?;
+
+    let mut buf = vec![0u8; XFER_CHUNK];
+    let mut done: u64 = 0;
+    progress(0, total);
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            drop(dst);
+            let _ = sftp.remove_file(remote).await;
+            return Err("transfer cancelled".to_string());
+        }
+        let n = src
+            .read(&mut buf)
+            .await
+            .map_err(|e| format!("local read failed: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        dst.write_all(&buf[..n])
+            .await
+            .map_err(|e| format!("write failed: {e}"))?;
+        done += n as u64;
+        progress(done, total.max(done));
+    }
+    dst.flush()
+        .await
+        .map_err(|e| format!("flush failed: {e}"))?;
+    progress(done, done);
+    Ok(())
+}
+
+// the drag-drop path: js already holds the dropped file's bytes (no local path to
+// hand us, webview security), so we write them straight through. capped only by the
+// browser holding the whole File in memory first - fine for the convenience case.
+pub async fn write_bytes(
+    sftp: &SftpSession,
+    path: &str,
+    data: &[u8],
+    cancel: &AtomicBool,
+    mut progress: impl FnMut(u64, u64),
+) -> Result<(), String> {
+    let total = data.len() as u64;
+    let mut dst = sftp
+        .open_with_flags(
+            path,
+            OpenFlags::CREATE | OpenFlags::WRITE | OpenFlags::TRUNCATE,
+        )
+        .await
+        .map_err(|e| format!("open failed: {e}"))?;
+
+    let mut done: u64 = 0;
+    progress(0, total);
+    for chunk in data.chunks(XFER_CHUNK) {
+        if cancel.load(Ordering::Relaxed) {
+            drop(dst);
+            let _ = sftp.remove_file(path).await;
+            return Err("transfer cancelled".to_string());
+        }
+        dst.write_all(chunk)
+            .await
+            .map_err(|e| format!("write failed: {e}"))?;
+        done += chunk.len() as u64;
+        progress(done, total);
+    }
+    dst.flush()
+        .await
+        .map_err(|e| format!("flush failed: {e}"))?;
+    Ok(())
 }

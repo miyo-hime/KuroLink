@@ -11,6 +11,7 @@
     sftpRename,
   } from "../lib/ipc";
   import FileTreeNode from "./FileTreeNode.svelte";
+  import { transfers } from "../lib/transfers.svelte";
 
   interface Props {
     sessionId: string;
@@ -119,6 +120,43 @@
 
   function collapseAll() {
     treeVersion++;
+  }
+
+  let dropActive = $state(false);
+
+  function onPanelDragOver(e: DragEvent) {
+    if (!home || !e.dataTransfer?.types.includes("Files")) return;
+    e.preventDefault();
+    dropActive = true;
+  }
+
+  function onPanelDragLeave(e: DragEvent) {
+    // ignore bubbling from child rows - only clear when the cursor actually leaves
+    if (e.relatedTarget && (e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) return;
+    dropActive = false;
+  }
+
+  // a drop that wasn't caught by a dir row lands here -> goes to the panel root (home)
+  function onPanelDrop(e: DragEvent) {
+    dropActive = false;
+    const files = e.dataTransfer?.files;
+    if (!home || !files || files.length === 0) return;
+    e.preventDefault();
+    transfers.uploadFiles(sessionId, home, [...files], reloadRoot);
+  }
+
+  function uploadToRoot() {
+    transfers.uploadPicker(sessionId, home, reloadRoot);
+  }
+
+  function startDownload(target: FileMenuTarget) {
+    menu = null;
+    transfers.download(sessionId, target.entry);
+  }
+
+  function startUpload(target: FileMenuTarget) {
+    menu = null;
+    transfers.uploadPicker(sessionId, target.entry.path, target.reloadChildren);
   }
 
   function newFolderAtRoot() {
@@ -337,7 +375,14 @@
   });
 </script>
 
-<aside class="file-browser" oncontextmenu={onPanelContextMenu}>
+<aside
+  class="file-browser"
+  class:dropping={dropActive}
+  oncontextmenu={onPanelContextMenu}
+  ondragover={onPanelDragOver}
+  ondragleave={onPanelDragLeave}
+  ondrop={onPanelDrop}
+>
   <header class="fb-header">
     <span class="fb-title">FILES</span>
     <div class="fb-actions">
@@ -355,6 +400,13 @@
         title="New folder here"
         aria-label="New folder"
       >⊞</button>
+      <button
+        class="fb-btn"
+        onclick={uploadToRoot}
+        disabled={!home}
+        title="Upload here"
+        aria-label="Upload here"
+      >▲</button>
       <button class="fb-btn" onclick={collapseAll} title="Collapse all" aria-label="Collapse all">⊟</button>
       <button class="fb-btn" onclick={load} title="Refresh" aria-label="Refresh">⟳</button>
       <button class="fb-btn" onclick={onClose} title="Close" aria-label="Close">✕</button>
@@ -397,16 +449,26 @@
     {/if}
   </div>
 
+  {#if dropActive}
+    <div class="fb-drop-overlay">
+      <span>▲ DROP TO UPLOAD</span>
+    </div>
+  {/if}
+
   {#if menu}
     <div bind:this={menuEl} class="fb-context" style="left: {menu.x}px; top: {menu.y}px;">
       {#if menu.kind === "root"}
         <button class="fb-context-item" onclick={() => { menu = null; newFileAtRoot(); }}>New File</button>
         <button class="fb-context-item" onclick={() => { menu = null; newFolderAtRoot(); }}>New Folder</button>
+        <button class="fb-context-item" onclick={uploadToRoot}>Upload Here</button>
       {:else}
         {@const target = menu.target}
         {#if target.entry.is_dir}
           <button class="fb-context-item" onclick={() => startNewFile(target)}>New File</button>
           <button class="fb-context-item" onclick={() => startNewFolder(target)}>New Folder</button>
+          <button class="fb-context-item" onclick={() => startUpload(target)}>Upload Here</button>
+        {:else}
+          <button class="fb-context-item" onclick={() => startDownload(target)}>Download</button>
         {/if}
         <button class="fb-context-item" onclick={() => startRename(target)}>Rename</button>
         <button class="fb-context-item danger" onclick={() => startDelete(target)}>Delete</button>
@@ -478,6 +540,26 @@
       var(--border-glow) 80%,
       transparent
     );
+  }
+
+  .file-browser.dropping {
+    background: rgba(var(--accent-rgb), 0.05);
+  }
+
+  .fb-drop-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 2200;
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+    background: rgba(8, 8, 16, 0.45);
+    border: 1px dashed rgba(var(--accent-rgb), 0.6);
+    color: var(--accent-primary);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-shadow: 0 0 10px rgba(var(--accent-rgb), 0.5);
   }
 
   .fb-header {

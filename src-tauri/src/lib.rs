@@ -14,6 +14,7 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(AppState::new())
         .invoke_handler(tauri::generate_handler![
             commands::get_profiles,
@@ -52,6 +53,10 @@ pub fn run() {
             commands::sftp_mkdir,
             commands::sftp_remove,
             commands::sftp_rename,
+            commands::sftp_download,
+            commands::sftp_upload,
+            commands::sftp_upload_bytes,
+            commands::cancel_transfer,
             chrome::set_max_button_rect,
         ])
         .setup(|app| {
@@ -70,8 +75,8 @@ pub fn run() {
                 // bits of os chrome bleeding into the borderless look.
                 if let Ok(hwnd) = win.hwnd() {
                     use windows_sys::Win32::Graphics::Dwm::{
-                        DwmSetWindowAttribute, DWMWA_BORDER_COLOR,
-                        DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND,
+                        DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE,
+                        DWMWCP_DONOTROUND,
                     };
                     let none_color: u32 = 0xFFFFFFFE;
                     let corner_pref: u32 = DWMWCP_DONOTROUND as u32;

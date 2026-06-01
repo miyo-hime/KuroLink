@@ -4,6 +4,7 @@
   import { cubicOut } from "svelte/easing";
   import type { SftpEntry, FileMenuTarget } from "../lib/types";
   import { sftpListDir } from "../lib/ipc";
+  import { transfers } from "../lib/transfers.svelte";
   import { fileGlyph, humanSize, formatMtime } from "../lib/fileKind";
   import { HIGHLIGHT_KEY, type TreeHighlight } from "../lib/treeHighlight";
   import Self from "./FileTreeNode.svelte";
@@ -65,6 +66,31 @@
     expanded = true;
   }
 
+  let dropActive = $state(false);
+
+  // dirs swallow file drops onto themselves (uploads land inside, not at root);
+  // file rows ignore them so the drop bubbles up to the panel
+  function onRowDragOver(e: DragEvent) {
+    if (!entry.is_dir || !e.dataTransfer?.types.includes("Files")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dropActive = true;
+  }
+
+  function onRowDragLeave() {
+    dropActive = false;
+  }
+
+  function onRowDrop(e: DragEvent) {
+    if (!entry.is_dir) return;
+    const files = e.dataTransfer?.files;
+    if (!files || files.length === 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dropActive = false;
+    transfers.uploadFiles(sessionId, entry.path, [...files], expandReload);
+  }
+
   function rowContextMenu(e: MouseEvent) {
     onContextMenu(e, {
       entry,
@@ -84,9 +110,13 @@
   <button
     class="row {entry.is_dir ? 'is-dir' : 'is-file'}"
     class:just-created={isNew}
+    class:drop-target={dropActive}
     style="padding-left: {depth * 14 + 8}px"
     onclick={onRowClick}
     oncontextmenu={rowContextMenu}
+    ondragover={onRowDragOver}
+    ondragleave={onRowDragLeave}
+    ondrop={onRowDrop}
     title={rowTitle}
     tabindex={-1}
     data-dir={entry.is_dir}
@@ -174,6 +204,13 @@
     100% {
       background: transparent;
     }
+  }
+
+  /* a dir lit up as an upload target while you hover files over it */
+  .row.drop-target {
+    background: rgba(var(--accent-rgb), 0.18);
+    box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.6);
+    color: var(--text-primary);
   }
 
   /* keyboard focus doubles as selection */
