@@ -7,13 +7,15 @@
     node: PaneNode;
     activePaneId: string;
     tabVisible: boolean;
+    multiPane: boolean;
     onFocusPane: (paneId: string) => void;
     onSetRatio: (splitId: string, ratio: number) => void;
-    // (pane, visible, focused) -> the actual TerminalPanel/EditorPanel
-    leaf: Snippet<[Pane, boolean, boolean]>;
+    onClosePane: (paneId: string) => void;
+    // (pane, visible, focused, multiPane) -> the actual TerminalPanel/EditorPanel
+    leaf: Snippet<[Pane, boolean, boolean, boolean]>;
   }
 
-  let { node, activePaneId, tabVisible, onFocusPane, onSetRatio, leaf }: Props = $props();
+  let { node, activePaneId, tabVisible, multiPane, onFocusPane, onSetRatio, onClosePane, leaf }: Props = $props();
 
   let splitEl = $state<HTMLDivElement | null>(null);
 
@@ -50,12 +52,21 @@
     data-pane-id={node.pane.paneId}
     onpointerdowncapture={() => onFocusPane(node.pane.paneId)}
   >
-    {@render leaf(node.pane, tabVisible, tabVisible && node.pane.paneId === activePaneId)}
+    {@render leaf(node.pane, tabVisible, tabVisible && node.pane.paneId === activePaneId, multiPane)}
+    {#if multiPane && node.pane.backend.kind !== "editor"}
+      <button
+        class="pane-close"
+        title="Close pane"
+        aria-label="Close pane"
+        onpointerdown={(e) => e.stopPropagation()}
+        onclick={() => onClosePane(node.pane.paneId)}
+      >✕</button>
+    {/if}
   </div>
 {:else}
   <div class="pane-split pane-split-{node.dir}" bind:this={splitEl}>
     <div class="pane-slot" style="flex-grow: {node.ratio};">
-      <PaneTree node={node.a} {activePaneId} {tabVisible} {onFocusPane} {onSetRatio} {leaf} />
+      <PaneTree node={node.a} {activePaneId} {tabVisible} {multiPane} {onFocusPane} {onSetRatio} {onClosePane} {leaf} />
     </div>
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
@@ -63,7 +74,7 @@
       onpointerdown={(e) => startDrag(e, node.dir)}
     ></div>
     <div class="pane-slot" style="flex-grow: {1 - node.ratio};">
-      <PaneTree node={node.b} {activePaneId} {tabVisible} {onFocusPane} {onSetRatio} {leaf} />
+      <PaneTree node={node.b} {activePaneId} {tabVisible} {multiPane} {onFocusPane} {onSetRatio} {onClosePane} {leaf} />
     </div>
   </div>
 {/if}
@@ -78,6 +89,39 @@
     height: 100%;
     min-width: 0;
     min-height: 0;
+  }
+
+  /* the only mouse way out of a split - panes get no tab-strip X. hover-reveal. the
+     editor pane opts out (it folds its own close into the toolbar) - see PaneTree leaf. */
+  .pane-close {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    z-index: 16;
+    width: 18px;
+    height: 18px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    font-family: inherit;
+    font-size: 0.7rem;
+    line-height: 1;
+    color: var(--text-dim);
+    background: rgba(8, 8, 16, 0.7);
+    border: 1px solid rgba(var(--accent-rgb), 0.3);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+    clip-path: polygon(0 0, calc(100% - 4px) 0, 100% 4px, 100% 100%, 4px 100%, 0 calc(100% - 4px));
+  }
+
+  .pane:hover .pane-close {
+    opacity: 1;
+  }
+
+  .pane-close:hover {
+    color: var(--accent-secondary);
+    border-color: var(--accent-secondary);
   }
 
   /* the focused-pane ring. inset box-shadow, not border - no layout shift, and it

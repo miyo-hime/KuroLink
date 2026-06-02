@@ -67,15 +67,13 @@ export const DEFAULT_LOCAL_SHELLS: LocalShellInfo[] = [
 export type TabBackend =
   | { kind: "ssh"; sessionId: string; profileId: string; profileName: string }
   | { kind: "local"; shellType: LocalShellId }
-  | { kind: "editor"; sessionId: string; profileId: string | null; path: string }
-  | { kind: "files"; sessionId: string; profileId: string | null };
+  | { kind: "editor"; sessionId: string; profileId: string | null; path: string };
 
 // what we stash for next launch - intent only, never the dead session/channel ids.
 export type SavedTab =
   | { kind: "ssh"; profileId: string }
   | { kind: "local"; shellType: LocalShellId }
-  | { kind: "editor"; profileId: string; path: string }
-  | { kind: "files"; profileId: string };
+  | { kind: "editor"; profileId: string; path: string };
 
 // the persisted mirror of PaneNode: leaves are restore intent (a SavedTab), splits
 // carry no id since those get minted fresh on rebuild.

@@ -523,14 +523,32 @@
 </aside>
 
 <style>
-  /* no border-right - the pane divider draws the edge between panes. */
   .file-browser {
     display: flex;
     flex-direction: column;
-    width: 100%;
+    width: 250px;
+    flex-shrink: 0;
     height: 100%;
+    border-right: 1px solid var(--border-subtle);
     background: rgba(8, 8, 16, 0.4);
     position: relative;
+  }
+
+  .file-browser::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 1px;
+    background: linear-gradient(
+      180deg,
+      transparent,
+      var(--border-glow) 20%,
+      rgba(var(--accent-rgb), 0.5) 50%,
+      var(--border-glow) 80%,
+      transparent
+    );
   }
 
   .file-browser.dropping {

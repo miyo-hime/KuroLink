@@ -38,10 +38,12 @@
     path: string;
     visible: boolean;
     focused: boolean;
+    canClose: boolean;
     onDirtyChange: (channelId: string, dirty: boolean) => void;
+    onClose: () => void;
   }
 
-  let { channelId, sessionId, path, visible, focused, onDirtyChange }: Props = $props();
+  let { channelId, sessionId, path, visible, focused, canClose, onDirtyChange, onClose }: Props = $props();
 
   // past this, skip syntax highlight + minimap and open as plain fast text - a 50MB
   // log shouldn't make lezer chew the cpu for color nobody's reading
@@ -50,7 +52,7 @@
 
   // a tab's path is fixed for its life, so this never actually re-derives
   const image = $derived(isImage(path));
-  // svg opens as editable text (it's markup), but it can also flip to a rendered preview
+  // svg opens as editable text, but it can also flip to a rendered preview
   const isSvg = $derived(!image && /\.svg$/i.test(path));
 
   let loading = $state(true);
@@ -78,7 +80,7 @@
     const d = dirty;
     const id = channelId;
     // fire untracked - onDirtyChange writes MainView's `tabs`, and reading `tabs`
-    // inside it would chain this effect to tabs and loop forever (see editor tabs gotcha)
+    // inside it would chain this effect to tabs and loop forever
     untrack(() => onDirtyChange(id, d));
   });
 
@@ -390,6 +392,9 @@
         {saving ? "..." : "SAVE"}
       </button>
     {/if}
+    {#if canClose}
+      <button class="editor-btn close" onclick={onClose} title="Close pane" aria-label="Close pane">✕</button>
+    {/if}
   </div>
 
   {#if image}
@@ -519,6 +524,11 @@
 
   .editor-btn.save:hover:not(:disabled) {
     box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.2);
+  }
+
+  .editor-btn.close:hover:not(:disabled) {
+    color: var(--accent-secondary);
+    border-color: var(--accent-secondary);
   }
 
   .cm-wrap {

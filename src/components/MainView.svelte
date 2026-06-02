@@ -58,6 +58,7 @@
   let stats = $state<SystemStats | null>(null);
   let prevStats = $state<SystemStats | null>(null);
   let searchVisible = $state(false);
+  let filesVisible = $state(false);
   // editor dirty state lives OUTSIDE the tree on purpose - writing it into a pane
   // would rebuild `tabs` on every keystroke and yank focus out of the textarea.
   // keyed by the editor pane's paneId.
@@ -81,10 +82,7 @@
   let activeTab = $derived(tabs.find((t) => t.id === activeTabId));
   let activePane = $derived(activeTab ? findPane(activeTab.layout, activeTab.activePaneId) : null);
   let activeSessionId = $derived(
-    activePane &&
-      (activePane.backend.kind === "ssh" ||
-        activePane.backend.kind === "editor" ||
-        activePane.backend.kind === "files")
+    activePane && (activePane.backend.kind === "ssh" || activePane.backend.kind === "editor")
       ? activePane.backend.sessionId
       : null,
   );
@@ -93,39 +91,28 @@
       ? activePane.backend.profileName
       : activePane?.backend.kind === "editor"
         ? basename(activePane.backend.path)
-        : activePane?.backend.kind === "files"
-          ? activePane.backend.profileId
-            ? profileLabel(activePane.backend.profileId)
-            : "FILES"
-          : activePane?.backend.kind === "local"
-            ? activePane.backend.shellType.toUpperCase()
-            : "",
+        : activePane?.backend.kind === "local"
+          ? activePane.backend.shellType.toUpperCase()
+          : "",
   );
   let isActiveLost = $derived(activeSessionId ? lostSessions.has(activeSessionId) : false);
   let connectionStatus = $derived<ConnectionStatus>(isActiveLost ? "lost" : "connected");
   let activeLatency = $derived(
-    (activePane?.backend.kind === "ssh" ||
-      activePane?.backend.kind === "editor" ||
-      activePane?.backend.kind === "files") &&
-    stats
+    (activePane?.backend.kind === "ssh" || activePane?.backend.kind === "editor") && stats
       ? stats.latency_ms
       : null,
   );
   // sftp needs a live ssh session - local panes and dead links don't get the panel
   let filesAvailable = $derived(activeSessionId != null && !isActiveLost);
-  let activeTabHasFiles = $derived(
-    activeTab ? panesOf(activeTab.layout).some((p) => p.backend.kind === "files") : false,
-  );
 
-  // auto-split a files strip the first time a live ssh session is in focus. once only
-  // (plain flag, not $state) so closing it sticks and reconnects don't re-pop it.
+  // first time a live ssh session lands in focus, swing the browser open - if you're
+  // on a remote box you almost certainly want its fs in view. once only (plain flag,
+  // not $state), so closing it sticks and reconnects/pane-hops don't keep re-popping it.
   let hasAutoOpenedFiles = false;
   $effect(() => {
-    if (!filesAvailable || hasAutoOpenedFiles) return;
-    hasAutoOpenedFiles = true;
-    const tab = untrack(() => activeTab);
-    if (tab && !panesOf(tab.layout).some((p) => p.backend.kind === "files")) {
-      untrack(() => openFilesPane());
+    if (filesAvailable && !hasAutoOpenedFiles) {
+      hasAutoOpenedFiles = true;
+      filesVisible = true;
     }
   });
 
@@ -184,7 +171,7 @@
   function profileForSession(sessionId: string): string | null {
     for (const p of allPanes()) {
       if (p.backend.kind === "ssh" && p.backend.sessionId === sessionId) return p.backend.profileId;
-      if ((p.backend.kind === "editor" || p.backend.kind === "files") && p.backend.sessionId === sessionId && p.backend.profileId)
+      if (p.backend.kind === "editor" && p.backend.sessionId === sessionId && p.backend.profileId)
         return p.backend.profileId;
     }
     return null;
@@ -209,65 +196,21 @@
     addTab({ paneId, title: basename(path), backend: { kind: "editor", sessionId, profileId: pid, path } });
   }
 
-  function makeFilesPane(sessionId: string, profileId: string | null): Pane {
-    return { paneId: `files:${crypto.randomUUID()}`, title: "FILES", backend: { kind: "files", sessionId, profileId } };
-  }
-
-  // focus stays put (the old overlay never stole it) so a fresh connect lands in the shell.
-  function openFilesPane() {
-    const tab = activeTab;
-    const sid = activeSessionId;
-    if (!tab || !sid) return;
-    const files = makeFilesPane(sid, profileForSession(sid));
-    const layout = splitAt(tab.layout, tab.activePaneId, "v", files, 0.24, true);
-    tabs = tabs.map((t) => (t.id === tab.id ? { ...t, layout } : t));
-  }
-
-  function toggleFilesPane() {
-    const tab = activeTab;
-    if (!tab) return;
-    const existing = panesOf(tab.layout).find((p) => p.backend.kind === "files");
-    if (existing) closePane(existing.paneId);
-    else openFilesPane();
-  }
-
-  function largestSplitTarget(tab: Tab, fallbackPaneId: string): string {
-    const ids = new Set(panesOf(tab.layout).filter((p) => p.backend.kind !== "files").map((p) => p.paneId));
-    if (ids.size === 0) return fallbackPaneId;
-    let best = fallbackPaneId;
-    let bestArea = -1;
-    for (const el of document.querySelectorAll<HTMLElement>("[data-pane-id]")) {
-      const id = el.dataset.paneId;
-      if (!id || !ids.has(id)) continue;
-      const r = el.getBoundingClientRect();
-      const area = r.width * r.height;
-      if (area > bestArea) {
-        bestArea = area;
-        best = id;
-      }
-    }
-    return best;
-  }
-
-  // right-click split: editor lands in the files pane's own tab, not a new one.
-  function openFileSplit(filesPaneId: string, sessionId: string, path: string, dir: "h" | "v") {
+  function openFileSplit(sessionId: string, path: string, dir: "h" | "v") {
     ensureEditorPanel();
-    const tab = tabs.find((t) => panesOf(t.layout).some((p) => p.paneId === filesPaneId));
+    const tab = activeTab;
     if (!tab) return;
     const existing = panesOf(tab.layout).find(
       (p) => p.backend.kind === "editor" && p.backend.sessionId === sessionId && p.backend.path === path,
     );
     if (existing) {
-      activeTabId = tab.id;
       tabs = tabs.map((t) => (t.id === tab.id ? { ...t, activePaneId: existing.paneId } : t));
       return;
     }
-    const targetId = largestSplitTarget(tab, filesPaneId);
     const paneId = `editor:${crypto.randomUUID()}`;
     const editor: Pane = { paneId, title: basename(path), backend: { kind: "editor", sessionId, profileId: profileForSession(sessionId), path } };
-    const layout = splitAt(tab.layout, targetId, dir, editor, 0.5, true);
+    const layout = splitAt(tab.layout, tab.activePaneId, dir, editor, 0.5);
     tabs = tabs.map((t) => (t.id === tab.id ? { ...t, layout, activePaneId: paneId } : t));
-    activeTabId = tab.id;
   }
 
   // an editor has no pty to clone, so a split off one drops a shell on its host: borrow
@@ -294,7 +237,7 @@
       const sib = allPanes().find((p) => p.backend.kind === "ssh" && p.backend.sessionId === sessionId);
       if (sib && sib.backend.kind === "ssh") info = { profileId: sib.backend.profileId, profileName: sib.backend.profileName };
     }
-    if (!info && (pane.backend.kind === "editor" || pane.backend.kind === "files") && pane.backend.profileId) {
+    if (!info && pane.backend.kind === "editor" && pane.backend.profileId) {
       info = { profileId: pane.backend.profileId, profileName: profileLabel(pane.backend.profileId) };
     }
     if (!info) return null;
@@ -515,7 +458,7 @@
       const rebuilt: Tab[] = [];
       for (const t of tabs) {
         let layout = mapPanes(t.layout, (p) =>
-          (p.backend.kind === "editor" || p.backend.kind === "files") && p.backend.sessionId === sid
+          p.backend.kind === "editor" && p.backend.sessionId === sid
             ? { ...p, backend: { ...p.backend, sessionId: result.session_id } }
             : p,
         );
@@ -559,12 +502,6 @@
       await createSshTabFromProfile(last.backend.profileId);
     } else if (last.backend.kind === "editor") {
       openEditorTab(last.backend.sessionId, last.backend.path, last.backend.profileId);
-    } else if (last.backend.kind === "files") {
-      // its session is likely dead - stand one back up from the baked profile
-      if (last.backend.profileId) {
-        const sid = await ensureSshSession(last.backend.profileId).catch(() => null);
-        if (sid) addTab(makeFilesPane(sid, last.backend.profileId));
-      }
     } else {
       await createLocalTab(last.backend.shellType);
     }
@@ -686,11 +623,11 @@
       },
       {
         id: "view.files",
-        title: activeTabHasFiles ? "Hide File Browser" : "Show File Browser",
+        title: filesVisible ? "Hide File Browser" : "Show File Browser",
         group: "VIEW",
         keywords: "sftp explorer files",
         enabled: filesAvailable,
-        run: toggleFilesPane,
+        run: () => (filesVisible = !filesVisible),
       },
       {
         id: "view.search",
@@ -800,9 +737,8 @@
         const name = profileLabel(st.profileId);
         return { paneId: channelId, title: `${name} ${tabCount}`, backend: { kind: "ssh", sessionId: sid, profileId: st.profileId, profileName: name } };
       }
-      if (st.kind === "files") {
-        return makeFilesPane(sid, st.profileId);
-      }
+      // a stale 'files' leaf from a 0.20.2 blob has no path - drop it, don't crash on basename
+      if ((st as { kind: string }).kind !== "editor") return null;
       ensureEditorPanel();
       const paneId = `editor:${crypto.randomUUID()}`;
       return { paneId, title: basename(st.path), backend: { kind: "editor", sessionId: sid, profileId: st.profileId, path: st.path } };
@@ -852,8 +788,7 @@
     if (b.kind === "ssh") return { kind: "ssh", profileId: b.profileId };
     if (b.kind === "local") return { kind: "local", shellType: b.shellType };
     if (b.kind === "editor" && b.profileId) return { kind: "editor", profileId: b.profileId, path: b.path };
-    if (b.kind === "files" && b.profileId) return { kind: "files", profileId: b.profileId };
-    return null; // editor/files with no known profile - nothing to restore it from
+    return null; // editor with no known profile - nothing to restore it from
   }
 
   // a non-persistable leaf (editor with no profile) drops and its split collapses, so
@@ -957,7 +892,7 @@
       try {
         let sysStats: SystemStats;
         if (
-          (pane.backend.kind === "ssh" || pane.backend.kind === "editor" || pane.backend.kind === "files") &&
+          (pane.backend.kind === "ssh" || pane.backend.kind === "editor") &&
           !lostSessions.has(pane.backend.sessionId)
         ) {
           sysStats = await fetchSystemStats(pane.backend.sessionId);
@@ -990,8 +925,8 @@
     onSearchToggle={() => (searchVisible = !searchVisible)}
     onDisconnect={handleDisconnect}
     {filesAvailable}
-    filesActive={activeTabHasFiles}
-    onFilesToggle={toggleFilesPane}
+    filesActive={filesVisible}
+    onFilesToggle={() => (filesVisible = !filesVisible)}
   />
   <TabBar
     {tabs}
@@ -1007,8 +942,16 @@
     onReorderTabs={handleReorderTabs}
   />
   <div class="work-area">
+    {#if filesVisible && activeSessionId && !isActiveLost}
+      <FileBrowser
+        sessionId={activeSessionId}
+        onClose={() => (filesVisible = false)}
+        onOpenFile={openEditorTab}
+        onOpenSplit={openFileSplit}
+      />
+    {/if}
     <div class="terminal-area">
-      {#snippet paneLeaf(pane: Pane, visible: boolean, focused: boolean)}
+      {#snippet paneLeaf(pane: Pane, visible: boolean, focused: boolean, multiPane: boolean)}
         {#if pane.backend.kind === "editor"}
           {#if EditorPanel}
             <EditorPanel
@@ -1017,18 +960,13 @@
               path={pane.backend.path}
               {visible}
               {focused}
+              canClose={multiPane}
               onDirtyChange={setEditorDirty}
+              onClose={() => closePane(pane.paneId)}
             />
           {:else}
             <div class="terminal-loading">OPENING EDITOR...</div>
           {/if}
-        {:else if pane.backend.kind === "files"}
-          <FileBrowser
-            sessionId={pane.backend.sessionId}
-            onClose={() => closePane(pane.paneId)}
-            onOpenFile={(sid, path) => openEditorTab(sid, path)}
-            onOpenSplit={(sid, path, dir) => openFileSplit(pane.paneId, sid, path, dir)}
-          />
         {:else if TerminalPanel}
           <TerminalPanel
             channelId={pane.paneId}
@@ -1050,8 +988,10 @@
             node={tab.layout}
             activePaneId={tab.activePaneId}
             tabVisible={tab.id === activeTabId}
+            multiPane={panesOf(tab.layout).length > 1}
             onFocusPane={(pid) => focusPane(tab.id, pid)}
             onSetRatio={(sid, r) => setTabRatio(tab.id, sid, r)}
+            onClosePane={closePane}
             leaf={paneLeaf}
           />
         </div>
