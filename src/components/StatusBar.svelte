@@ -158,52 +158,27 @@
     padding: 0.16rem 0.3rem;
     background: rgba(var(--accent-rgb), 0.05);
     border-radius: 2px;
-    /* slow theme-colored breath - border + glow ride the accent */
-    animation: cmd-key-glow 5s ease-in-out infinite;
+    /* steady accent glow - the breathing pulse read as nagging, so it just sits lit now */
+    color: var(--accent-primary);
+    border: 1px solid var(--border-active);
+    box-shadow: var(--glow-sm) rgba(var(--accent-rgb), 0.3);
   }
 
   .cmd-hint-label {
     font-size: 0.55rem;
     font-weight: 600;
     letter-spacing: 0.14em;
-    animation: cmd-label-glow 5s ease-in-out infinite;
+    color: var(--accent-primary);
+    text-shadow: var(--glow-sm) rgba(var(--accent-rgb), 0.4);
   }
 
-  /* hover freezes the breath at its bright peak */
+  /* hover lifts it a touch above its resting glow */
   .cmd-hint:hover .cmd-hint-keys kbd {
-    animation: none;
-    color: var(--accent-primary);
     border: 1px solid var(--border-glow);
     box-shadow: var(--glow-sm) rgba(var(--accent-rgb), 0.4);
   }
 
   .cmd-hint:hover .cmd-hint-label {
-    animation: none;
-    color: var(--accent-primary);
     text-shadow: var(--glow-sm) rgba(var(--accent-rgb), 0.5);
-  }
-
-  @keyframes cmd-key-glow {
-    0%, 100% {
-      color: var(--text-secondary);
-      border: 1px solid var(--border-subtle);
-      box-shadow: none;
-    }
-    50% {
-      color: var(--accent-primary);
-      border: 1px solid var(--border-active);
-      box-shadow: var(--glow-sm) rgba(var(--accent-rgb), 0.4);
-    }
-  }
-
-  @keyframes cmd-label-glow {
-    0%, 100% {
-      color: var(--text-label);
-      text-shadow: none;
-    }
-    50% {
-      color: var(--accent-primary);
-      text-shadow: var(--glow-sm) rgba(var(--accent-rgb), 0.5);
-    }
   }
 </style>

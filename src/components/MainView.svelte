@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
   import { DEFAULT_LOCAL_SHELLS } from "../lib/types";
-  import type { ConnectionProfile, Pane, Tab, SystemStats, ConnectionStatus, TabBackend, LocalShellId, LocalShellInfo, SavedSession, SavedTab } from "../lib/types";
+  import type { ConnectionProfile, Pane, PaneNode, Tab, SystemStats, ConnectionStatus, TabBackend, LocalShellId, LocalShellInfo, SavedSession, SavedTab, SavedPane, SavedTabEntry } from "../lib/types";
   import { leafOf, panesOf, findPane, mapPanes, splitAt, removePane, setRatio } from "../lib/paneTree";
   import { attachCommandKeys } from "../lib/shortcuts";
   import { commands, type Command } from "../lib/commands.svelte";
@@ -685,9 +685,8 @@
     commands.set(buildCommands());
   });
 
-  // replay last run's tab set. sessions are stood back up per-profile (reused across
-  // tabs on the same host); a profile that can't auth silently just drops its tabs.
-  // splits aren't persisted yet (slice 0.20.2), so this rebuilds flat single-pane tabs.
+  // sessions are stood back up per-profile (reused across panes on the same host); a
+  // profile that can't auth silently drops the panes that needed it.
   async function restoreSession(saved: SavedSession) {
     profiles = await getProfiles().catch(() => []);
     const sessionFor = new Map<string, string>();
@@ -705,38 +704,53 @@
       }
     };
 
-    const built: Tab[] = [];
-    let activeId: string | null = null;
-    const push = (pane: Pane, wantActive: boolean) => {
-      const tab: Tab = { id: `tab:${crypto.randomUUID()}`, layout: leafOf(pane), activePaneId: pane.paneId };
-      built.push(tab);
-      if (wantActive) activeId = tab.id;
+    const instantiate = async (st: SavedTab): Promise<Pane | null> => {
+      if (st.kind === "local") {
+        const channelId = await openLocalShell(st.shellType, 80, 24);
+        tabCount += 1;
+        return { paneId: channelId, title: `${st.shellType} ${tabCount}`, backend: { kind: "local", shellType: st.shellType } };
+      }
+      const sid = await ensure(st.profileId);
+      if (!sid) return null;
+      if (st.kind === "ssh") {
+        const channelId = await openShell(sid, 80, 24);
+        tabCount += 1;
+        const name = profileLabel(st.profileId);
+        return { paneId: channelId, title: `${name} ${tabCount}`, backend: { kind: "ssh", sessionId: sid, profileId: st.profileId, profileName: name } };
+      }
+      ensureEditorPanel();
+      const paneId = `editor:${crypto.randomUUID()}`;
+      return { paneId, title: basename(st.path), backend: { kind: "editor", sessionId: sid, profileId: st.profileId, path: st.path } };
     };
 
+    // a leaf whose host won't auth just drops out; its split collapses into the sibling,
+    // same shape removePane gives a live close.
+    const buildPane = async (sp: SavedPane): Promise<PaneNode | null> => {
+      if (sp.kind === "leaf") {
+        const pane = await instantiate(sp.backend);
+        return pane ? leafOf(pane) : null;
+      }
+      const a = await buildPane(sp.a);
+      const b = await buildPane(sp.b);
+      if (!a) return b;
+      if (!b) return a;
+      return { kind: "split", id: `split:${crypto.randomUUID()}`, dir: sp.dir, a, b, ratio: sp.ratio };
+    };
+
+    const built: Tab[] = [];
+    let activeId: string | null = null;
     for (let i = 0; i < saved.tabs.length; i++) {
-      const st = saved.tabs[i];
-      const wantActive = i === saved.activeIndex;
+      const entry = saved.tabs[i];
       try {
-        if (st.kind === "local") {
-          const channelId = await openLocalShell(st.shellType, 80, 24);
-          tabCount += 1;
-          push({ paneId: channelId, title: `${st.shellType} ${tabCount}`, backend: { kind: "local", shellType: st.shellType } }, wantActive);
-        } else if (st.kind === "ssh") {
-          const sid = await ensure(st.profileId);
-          if (!sid) continue;
-          const channelId = await openShell(sid, 80, 24);
-          tabCount += 1;
-          const name = profileLabel(st.profileId);
-          push({ paneId: channelId, title: `${name} ${tabCount}`, backend: { kind: "ssh", sessionId: sid, profileId: st.profileId, profileName: name } }, wantActive);
-        } else {
-          const sid = await ensure(st.profileId);
-          if (!sid) continue;
-          ensureEditorPanel();
-          const paneId = `editor:${crypto.randomUUID()}`;
-          push({ paneId, title: basename(st.path), backend: { kind: "editor", sessionId: sid, profileId: st.profileId, path: st.path } }, wantActive);
-        }
+        const layout = await buildPane(entry.layout);
+        if (!layout) continue;
+        const leaves = panesOf(layout);
+        const active = leaves[Math.min(entry.activeLeaf, leaves.length - 1)] ?? leaves[0];
+        const tab: Tab = { id: `tab:${crypto.randomUUID()}`, layout, activePaneId: active.paneId };
+        built.push(tab);
+        if (i === saved.activeIndex) activeId = tab.id;
       } catch (e) {
-        console.error("restore: tab failed", st, e);
+        console.error("restore: tab failed", entry, e);
       }
     }
 
@@ -756,25 +770,38 @@
     return null; // editor with no known profile - nothing to restore it from
   }
 
-  // stash the live tab set (debounced) so next launch's RESUME has something to offer.
-  // splits degrade to their panes as separate flat tabs (slice 0.20.2 teaches the tree).
+  // a non-persistable leaf (editor with no profile) drops and its split collapses, so
+  // the saved tree is always restorable - null only when the whole tab is unpersistable.
+  function toSavedPane(node: PaneNode): SavedPane | null {
+    if (node.kind === "leaf") {
+      const st = toSavedTab(node.pane.backend);
+      return st ? { kind: "leaf", backend: st } : null;
+    }
+    const a = toSavedPane(node.a);
+    const b = toSavedPane(node.b);
+    if (!a) return b;
+    if (!b) return a;
+    return { kind: "split", dir: node.dir, a, b, ratio: node.ratio };
+  }
+
+  // stash the live tab set (debounced) so next launch's RESUME has the whole layout back.
   // empty sets are skipped on purpose: a clean disconnect should leave the last real
   // session sitting there to resume, not wipe it.
   $effect(() => {
     const snapshot = tabs;
     const activeId = activeTabId;
     if (snapshot.length === 0) return;
-    const activePaneId = snapshot.find((t) => t.id === activeId)?.activePaneId ?? null;
     const timer = setTimeout(() => {
-      const out: SavedTab[] = [];
+      const out: SavedTabEntry[] = [];
       let activeIndex = 0;
       for (const t of snapshot) {
-        for (const p of panesOf(t.layout)) {
-          const st = toSavedTab(p.backend);
-          if (!st) continue;
-          if (t.id === activeId && p.paneId === activePaneId) activeIndex = out.length;
-          out.push(st);
-        }
+        const layout = toSavedPane(t.layout);
+        if (!layout) continue;
+        // activeLeaf indexes the persistable leaves in the same in-order toSavedPane keeps
+        const persist = panesOf(t.layout).filter((p) => toSavedTab(p.backend) !== null);
+        const activeLeaf = Math.max(0, persist.findIndex((p) => p.paneId === t.activePaneId));
+        if (t.id === activeId) activeIndex = out.length;
+        out.push({ layout, activeLeaf });
       }
       if (out.length > 0) saveSession({ tabs: out, activeIndex }).catch(() => {});
     }, 600);

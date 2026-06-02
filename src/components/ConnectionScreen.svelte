@@ -17,6 +17,7 @@
     listAgentIdentities,
     getSession,
   } from "../lib/ipc";
+  import { savedLeaves } from "../lib/savedSession";
   import KuroLinkLogo from "./KuroLinkLogo.svelte";
   import Titlebar from "./Titlebar.svelte";
 
@@ -84,9 +85,11 @@
     const localCounts = new Map<string, number>();
     let editors = 0;
     for (const t of savedSession.tabs) {
-      if (t.kind === "ssh") sshCounts.set(t.profileId, (sshCounts.get(t.profileId) ?? 0) + 1);
-      else if (t.kind === "local") localCounts.set(t.shellType, (localCounts.get(t.shellType) ?? 0) + 1);
-      else editors += 1;
+      for (const st of savedLeaves(t.layout)) {
+        if (st.kind === "ssh") sshCounts.set(st.profileId, (sshCounts.get(st.profileId) ?? 0) + 1);
+        else if (st.kind === "local") localCounts.set(st.shellType, (localCounts.get(st.shellType) ?? 0) + 1);
+        else editors += 1;
+      }
     }
     const parts: string[] = [];
     for (const [pid, n] of sshCounts) {

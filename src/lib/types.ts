@@ -75,8 +75,20 @@ export type SavedTab =
   | { kind: "local"; shellType: LocalShellId }
   | { kind: "editor"; profileId: string; path: string };
 
+// the persisted mirror of PaneNode: leaves are restore intent (a SavedTab), splits
+// carry no id since those get minted fresh on rebuild.
+export type SavedPane =
+  | { kind: "leaf"; backend: SavedTab }
+  | { kind: "split"; dir: "h" | "v"; a: SavedPane; b: SavedPane; ratio: number };
+
+// activeLeaf is the focused pane's index among the layout's leaves, in-order.
+export interface SavedTabEntry {
+  layout: SavedPane;
+  activeLeaf: number;
+}
+
 export interface SavedSession {
-  tabs: SavedTab[];
+  tabs: SavedTabEntry[];
   activeIndex: number;
 }
 

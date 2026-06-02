@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { ConnectionProfile, HostStatus, SystemStats, AgentIdentityInfo, OpenSshShellResult, SessionInfo, LocalShellInfo, LocalShellId, SftpEntry, SavedSession } from "./types";
+import { normalizeSession } from "./savedSession";
 
 // -- Config --
 
@@ -27,7 +28,9 @@ export const setWindowVibrancy = (mode: string) =>
 
 // -- Session restore --
 
-export const getSession = () => invoke<SavedSession | null>("get_session");
+// normalize at the boundary so every consumer sees the current tree shape, including
+// legacy flat blobs from before split panes learned to persist
+export const getSession = () => invoke<unknown>("get_session").then(normalizeSession);
 
 export const saveSession = (session: SavedSession) =>
   invoke<void>("save_session", { session });
