@@ -81,6 +81,10 @@ pub struct AppConfig {
     // reads inside it - it just round-trips the blob and lets the ui interpret.
     #[serde(default)]
     pub appearance: Option<serde_json::Value>,
+    // last run's tab set, also frontend-owned. just intent (profiles, paths, shells) -
+    // never the dead session/channel ids. the RESUME switch reads it, restore replays it.
+    #[serde(default)]
+    pub session: Option<serde_json::Value>,
 }
 
 pub fn config_path(_app: &AppHandle) -> Result<PathBuf, String> {

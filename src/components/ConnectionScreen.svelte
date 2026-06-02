@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { DEFAULT_LOCAL_SHELLS } from "../lib/types";
-  import type { ConnectionProfile, HostStatus, AgentIdentityInfo, AuthMode, LocalShellId, LocalShellInfo } from "../lib/types";
+  import type { ConnectionProfile, HostStatus, AgentIdentityInfo, AuthMode, LocalShellId, LocalShellInfo, SavedSession } from "../lib/types";
   import {
     getProfiles,
     getLastProfile,
@@ -15,6 +15,7 @@
     detectAgent,
     detectLocalShells,
     listAgentIdentities,
+    getSession,
   } from "../lib/ipc";
   import KuroLinkLogo from "./KuroLinkLogo.svelte";
   import Titlebar from "./Titlebar.svelte";
@@ -26,9 +27,10 @@
       profile: ConnectionProfile,
     ) => void;
     onLocalTerminal: (shellType: LocalShellId) => void;
+    onResume: (saved: SavedSession) => void;
   }
 
-  let { onConnected, onLocalTerminal }: Props = $props();
+  let { onConnected, onLocalTerminal, onResume }: Props = $props();
 
   function formatTimestamp(ts: string): string {
     const num = Number(ts);
@@ -72,6 +74,34 @@
   let agentAvailable = $state(false);
   let agentKeys = $state<AgentIdentityInfo[]>([]);
   let localShells = $state<LocalShellInfo[]>(DEFAULT_LOCAL_SHELLS);
+  let savedSession = $state<SavedSession | null>(null);
+
+  // a human glance at what last run looked like: "homelab x2 · cmd · 1 file".
+  // reactive on profiles too, so it firms up once the names land
+  let resumeSummary = $derived.by(() => {
+    if (!savedSession || savedSession.tabs.length === 0) return null;
+    const sshCounts = new Map<string, number>();
+    const localCounts = new Map<string, number>();
+    let editors = 0;
+    for (const t of savedSession.tabs) {
+      if (t.kind === "ssh") sshCounts.set(t.profileId, (sshCounts.get(t.profileId) ?? 0) + 1);
+      else if (t.kind === "local") localCounts.set(t.shellType, (localCounts.get(t.shellType) ?? 0) + 1);
+      else editors += 1;
+    }
+    const parts: string[] = [];
+    for (const [pid, n] of sshCounts) {
+      const p = profiles.find((p) => p.id === pid);
+      const name = p?.name || p?.host || "host";
+      parts.push(n > 1 ? `${name} x${n}` : name);
+    }
+    for (const [shell, n] of localCounts) parts.push(n > 1 ? `${shell} x${n}` : shell);
+    if (editors > 0) parts.push(`${editors} file${editors > 1 ? "s" : ""}`);
+    return parts.join(" · ");
+  });
+
+  function handleResume() {
+    if (savedSession) onResume(savedSession);
+  }
 
   let formValid = $derived(
     form.auth_mode === "agent"
@@ -90,6 +120,7 @@
         if (ok) listAgentIdentities().then((k) => (agentKeys = k)).catch(() => {});
       }).catch(() => {});
       detectLocalShells().then((s) => (localShells = s)).catch(() => {});
+      getSession().then((s) => (savedSession = s)).catch(() => {});
 
       try {
         profiles = await getProfiles();
@@ -601,6 +632,18 @@
               {/each}
             </div>
           </div>
+          {#if resumeSummary}
+            <div class="command-row">
+              <span class="command-row-label command-row-label-resume">RESUME</span>
+              <div class="command-switches">
+                <button class="cmd-switch cmd-switch-resume" onclick={handleResume} title="Reopen last session">
+                  <span class="cmd-switch-indicator indicator-amber"></span>
+                  <span class="resume-summary">{resumeSummary}</span>
+                  <span class="resume-arrow">&rsaquo;</span>
+                </button>
+              </div>
+            </div>
+          {/if}
         </div>
       </div>
 
@@ -1693,6 +1736,65 @@
 
   .cmd-switch-local:active:not(:disabled) {
     background: rgba(140, 204, 38, 0.1);
+  }
+
+  /* resume - the memory switch. wider, horizontal, amber to set it apart from the
+     cyan/green of remote/local. it's the "pick up where you left off" button. */
+  .command-row-label-resume {
+    color: var(--accent-warning);
+    text-shadow: 0 0 6px rgba(232, 168, 0, 0.3);
+  }
+
+  .cmd-switch-resume {
+    width: auto;
+    max-width: 360px;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.55rem 0.75rem;
+    border-left-color: var(--accent-warning);
+  }
+
+  .cmd-switch-resume:hover:not(:disabled) {
+    border-color: var(--accent-warning);
+    border-left-color: var(--accent-warning);
+    background: rgba(232, 168, 0, 0.05);
+    box-shadow: 0 0 12px rgba(232, 168, 0, 0.08);
+  }
+
+  .cmd-switch-resume:active:not(:disabled) {
+    background: rgba(232, 168, 0, 0.1);
+  }
+
+  .cmd-switch-indicator.indicator-amber {
+    background: var(--accent-warning);
+    box-shadow: 0 0 8px var(--accent-warning), 0 0 16px rgba(232, 168, 0, 0.3);
+  }
+
+  .resume-summary {
+    flex: 1;
+    min-width: 0;
+    color: var(--text-primary);
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .resume-arrow {
+    color: var(--accent-warning);
+    font-size: 1.1rem;
+    font-weight: 700;
+    line-height: 1;
+    flex-shrink: 0;
+    transition: transform var(--transition-fast);
+  }
+
+  .cmd-switch-resume:hover .resume-arrow {
+    transform: translateX(3px);
   }
 
   @keyframes led-pulse {

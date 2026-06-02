@@ -61,11 +61,24 @@ export const DEFAULT_LOCAL_SHELLS: LocalShellInfo[] = [
   { id: "nu", label: "Nushell", shortLabel: "NU", subtitle: "NUSHELL", detected: true, available: false },
 ];
 
-// tab backends - terminal IO doesn't care ssh vs local; editor is a non-PTY tab
+// tab backends - terminal IO doesn't care ssh vs local; editor is a non-PTY tab.
+// editor carries profileId (baked at open) so it can be restored even after every
+// shell tab on its session is gone - no sibling to derive the profile from later.
 export type TabBackend =
   | { kind: "ssh"; sessionId: string; profileId: string; profileName: string }
   | { kind: "local"; shellType: LocalShellId }
-  | { kind: "editor"; sessionId: string; path: string };
+  | { kind: "editor"; sessionId: string; profileId: string | null; path: string };
+
+// what we stash for next launch - intent only, never the dead session/channel ids.
+export type SavedTab =
+  | { kind: "ssh"; profileId: string }
+  | { kind: "local"; shellType: LocalShellId }
+  | { kind: "editor"; profileId: string; path: string };
+
+export interface SavedSession {
+  tabs: SavedTab[];
+  activeIndex: number;
+}
 
 export interface TerminalTab {
   // the tab's unique key. for ssh/local it's the real PTY channel; for editor

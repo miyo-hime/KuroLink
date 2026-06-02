@@ -1,18 +1,20 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
   import { DEFAULT_LOCAL_SHELLS } from "../lib/types";
-  import type { ConnectionProfile, TerminalTab, SystemStats, ConnectionStatus, TabBackend, LocalShellId, LocalShellInfo } from "../lib/types";
+  import type { ConnectionProfile, TerminalTab, SystemStats, ConnectionStatus, TabBackend, LocalShellId, LocalShellInfo, SavedSession, SavedTab } from "../lib/types";
   import { attachShortcuts } from "../lib/shortcuts";
   import {
     openShell,
     openSshShell,
     openLocalShell,
+    ensureSshSession,
     closeShell,
     disconnectSsh,
     fetchSystemStats,
     fetchLocalStats,
     detectLocalShells,
     getProfiles,
+    saveSession,
     onSessionError,
   } from "../lib/ipc";
   import type { UnlistenFn } from "@tauri-apps/api/event";
@@ -27,10 +29,11 @@
     initialSessionId: string | null;
     initialProfile: ConnectionProfile | null;
     initialLocalShell: LocalShellId | null;
+    initialRestore: SavedSession | null;
     onDisconnected: () => void;
   }
 
-  let { initialSessionId, initialProfile, initialLocalShell, onDisconnected }: Props = $props();
+  let { initialSessionId, initialProfile, initialLocalShell, initialRestore, onDisconnected }: Props = $props();
 
   const STATS_POLL_MS = 10_000;
 
@@ -160,8 +163,19 @@
     return i < 0 ? p : p.slice(i + 1);
   }
 
-  // open a remote file in an editor tab (or focus it if already open)
-  function openEditorTab(sessionId: string, path: string) {
+  // editor tabs carry their own profileId, so this still resolves after the last shell closes.
+  function profileForSession(sessionId: string): string | null {
+    for (const t of tabs) {
+      if (t.backend.kind === "ssh" && t.backend.sessionId === sessionId) return t.backend.profileId;
+      if (t.backend.kind === "editor" && t.backend.sessionId === sessionId && t.backend.profileId)
+        return t.backend.profileId;
+    }
+    return null;
+  }
+
+  // open a remote file in an editor tab (or focus it if already open). profileId is
+  // derived from the session unless the caller already knows it (restore does)
+  function openEditorTab(sessionId: string, path: string, profileId?: string | null) {
     ensureEditorPanel();
     const existing = tabs.find(
       (t) =>
@@ -173,11 +187,12 @@
       activeTabId = existing.channelId;
       return;
     }
+    const pid = profileId ?? profileForSession(sessionId);
     const channelId = `editor:${crypto.randomUUID()}`;
     const tab: TerminalTab = {
       channelId,
       title: basename(path),
-      backend: { kind: "editor", sessionId, path },
+      backend: { kind: "editor", sessionId, profileId: pid, path },
     };
     tabs = [...tabs, tab];
     activeTabId = channelId;
@@ -345,9 +360,17 @@
           profileName: sshTab.backend.profileName,
         },
       };
-      const survivors = tabs.filter(
-        (t) => !(t.backend.kind === "ssh" && t.backend.sessionId === sid),
-      );
+      // drop the dead shells, but editor tabs survive - re-point them at the fresh
+      // session so the next save/reload rides the live link instead of the corpse.
+      // sessionId is read at call-time inside the editor, not in an effect, so swapping
+      // it here won't re-fetch or stomp unsaved edits.
+      const survivors = tabs
+        .filter((t) => !(t.backend.kind === "ssh" && t.backend.sessionId === sid))
+        .map((t) =>
+          t.backend.kind === "editor" && t.backend.sessionId === sid
+            ? { ...t, backend: { ...t.backend, sessionId: result.session_id } }
+            : t,
+        );
       tabs = [...survivors, newTab];
       activeTabId = result.channel_id;
     } catch (e) {
@@ -369,11 +392,104 @@
     }
   }
 
+  function profileLabel(profileId: string): string {
+    const p = profiles.find((p) => p.id === profileId);
+    return p?.name || p?.host || "SSH";
+  }
+
+  // replay last run's tab set. sessions are stood back up per-profile (reused across
+  // tabs on the same host); a profile that can't auth silently just drops its tabs.
+  async function restoreSession(saved: SavedSession) {
+    profiles = await getProfiles().catch(() => []);
+    const sessionFor = new Map<string, string>();
+
+    const ensure = async (profileId: string): Promise<string | null> => {
+      const cached = sessionFor.get(profileId);
+      if (cached) return cached;
+      try {
+        const sid = await ensureSshSession(profileId);
+        sessionFor.set(profileId, sid);
+        return sid;
+      } catch (e) {
+        console.error("restore: couldn't reach", profileId, e);
+        return null;
+      }
+    };
+
+    let activeChannel: string | null = null;
+    for (let i = 0; i < saved.tabs.length; i++) {
+      const st = saved.tabs[i];
+      const wantActive = i === saved.activeIndex;
+      try {
+        if (st.kind === "local") {
+          const channelId = await openLocalShell(st.shellType, 80, 24);
+          tabCount += 1;
+          tabs = [...tabs, { channelId, title: `${st.shellType} ${tabCount}`, backend: { kind: "local", shellType: st.shellType } }];
+          if (wantActive) activeChannel = channelId;
+        } else if (st.kind === "ssh") {
+          const sid = await ensure(st.profileId);
+          if (!sid) continue;
+          const channelId = await openShell(sid, 80, 24);
+          tabCount += 1;
+          const name = profileLabel(st.profileId);
+          tabs = [...tabs, { channelId, title: `${name} ${tabCount}`, backend: { kind: "ssh", sessionId: sid, profileId: st.profileId, profileName: name } }];
+          if (wantActive) activeChannel = channelId;
+        } else {
+          const sid = await ensure(st.profileId);
+          if (!sid) continue;
+          ensureEditorPanel();
+          const channelId = `editor:${crypto.randomUUID()}`;
+          tabs = [...tabs, { channelId, title: basename(st.path), backend: { kind: "editor", sessionId: sid, profileId: st.profileId, path: st.path } }];
+          if (wantActive) activeChannel = channelId;
+        }
+      } catch (e) {
+        console.error("restore: tab failed", st, e);
+      }
+    }
+
+    // every host fell over (nothing silently authable) - back to the connect screen
+    if (tabs.length === 0) {
+      onDisconnected();
+      return;
+    }
+    activeTabId = activeChannel ?? tabs[0].channelId;
+  }
+
+  function toSavedTab(b: TabBackend): SavedTab | null {
+    if (b.kind === "ssh") return { kind: "ssh", profileId: b.profileId };
+    if (b.kind === "local") return { kind: "local", shellType: b.shellType };
+    if (b.kind === "editor" && b.profileId) return { kind: "editor", profileId: b.profileId, path: b.path };
+    return null; // editor with no known profile - nothing to restore it from
+  }
+
+  // stash the live tab set (debounced) so next launch's RESUME has something to offer.
+  // empty sets are skipped on purpose: a clean disconnect should leave the last real
+  // session sitting there to resume, not wipe it.
+  $effect(() => {
+    const snapshot = tabs;
+    const activeId = activeTabId;
+    if (snapshot.length === 0) return;
+    const timer = setTimeout(() => {
+      const out: SavedTab[] = [];
+      let activeIndex = 0;
+      for (const t of snapshot) {
+        const st = toSavedTab(t.backend);
+        if (!st) continue;
+        if (t.channelId === activeId) activeIndex = out.length;
+        out.push(st);
+      }
+      if (out.length > 0) saveSession({ tabs: out, activeIndex }).catch(() => {});
+    }, 600);
+    return () => clearTimeout(timer);
+  });
+
   onMount(() => {
     transfers.init();
     import("./TerminalPanel.svelte").then((m) => (TerminalPanel = m.default));
 
-    if (initialLocalShell) {
+    if (initialRestore) {
+      restoreSession(initialRestore);
+    } else if (initialLocalShell) {
       createLocalTab(initialLocalShell);
     } else if (initialSessionId && initialProfile) {
       createSshTabFromSession(initialSessionId, initialProfile);

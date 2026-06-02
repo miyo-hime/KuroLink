@@ -160,19 +160,45 @@ pub async fn make_dir(sftp: &SftpSession, path: &str) -> Result<(), String> {
 }
 
 pub async fn remove(sftp: &SftpSession, path: &str) -> Result<(), String> {
+    // lstat, not stat - a symlink to a dir should get unlinked, never walked. we delete
+    // the link, not whatever it points at (which might be somewhere you very much care about)
     let meta = sftp
-        .metadata(path)
+        .symlink_metadata(path)
         .await
         .map_err(|e| format!("stat failed: {e}"))?;
-    if meta.is_dir() {
-        sftp.remove_dir(path)
-            .await
-            .map_err(|e| format!("rmdir failed: {e}"))
+    if meta.is_dir() && !meta.is_symlink() {
+        remove_tree(sftp, path).await
     } else {
         sftp.remove_file(path)
             .await
             .map_err(|e| format!("rm failed: {e}"))
     }
+}
+
+async fn remove_tree(sftp: &SftpSession, dir: &str) -> Result<(), String> {
+    let entries = sftp
+        .read_dir(dir)
+        .await
+        .map_err(|e| format!("read_dir failed: {e}"))?;
+    for entry in entries {
+        let name = entry.file_name();
+        if name == "." || name == ".." {
+            continue;
+        }
+        let child = join_path(dir, &name);
+        let meta = entry.metadata();
+        if meta.is_dir() && !meta.is_symlink() {
+            // box the recursive future or the type is infinitely sized
+            Box::pin(remove_tree(sftp, &child)).await?;
+        } else {
+            sftp.remove_file(&child)
+                .await
+                .map_err(|e| format!("rm failed: {e}"))?;
+        }
+    }
+    sftp.remove_dir(dir)
+        .await
+        .map_err(|e| format!("rmdir failed: {e}"))
 }
 
 pub async fn rename(sftp: &SftpSession, from: &str, to: &str) -> Result<(), String> {

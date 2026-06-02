@@ -129,6 +129,27 @@ pub async fn save_appearance(
     state.update_config(&app, config).await
 }
 
+// session restore - same frontend-owned-blob deal as appearance: rust just round-trips it.
+
+#[tauri::command]
+pub async fn get_session(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<serde_json::Value>, String> {
+    Ok(state.get_config(&app).await?.session)
+}
+
+#[tauri::command]
+pub async fn save_session(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    session: serde_json::Value,
+) -> Result<(), String> {
+    let mut config = state.get_config(&app).await?;
+    config.session = Some(session);
+    state.update_config(&app, config).await
+}
+
 /// swap the window's translucency. acrylic blurs everything behind, blur is
 /// lighter, none lets a flat preset stand on its own. windows-only; elsewhere
 /// the frontend tint carries the whole look, so this is a no-op.
@@ -446,59 +467,27 @@ pub async fn open_shell(
     Ok(channel_id)
 }
 
-/// connect to a profile (or reuse existing session) and open a shell in one call.
-/// used by the tab dropdown for opening new ssh tabs after initial connection
-#[tauri::command]
-pub async fn open_ssh_shell(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    profile_id: String,
-    cols: u32,
-    rows: u32,
+/// reuse-or-connect a session for a profile (the String is its id). opens no shell -
+/// that's the caller's call. saved secrets come from the keychain; passphrase is the
+/// fallback for an unsaved one.
+async fn ensure_session_for_profile(
+    app: &AppHandle,
+    state: &AppState,
+    profile_id: &str,
     passphrase: Option<String>,
-) -> Result<OpenSshShellResult, String> {
-    let mut sessions = state.ssh_sessions.lock().await;
-
-    // check for existing session to this profile
-    let existing_sid = sessions
-        .values()
-        .find(|e| e.profile_id == profile_id)
-        .map(|e| e.session_id.clone());
-
-    if let Some(sid) = existing_sid {
-        // reuse existing session
-        let entry = sessions.get_mut(&sid).unwrap();
-        let channel = entry.ssh.open_shell(cols, rows).await?;
-        let channel_id = uuid::Uuid::new_v4().to_string();
-
-        let (input_tx, start_signal) =
-            ssh::spawn_channel_io(app, sid.clone(), channel_id.clone(), channel);
-        entry.channel_count += 1;
-
-        let active = ActiveChannel {
-            backend: ChannelBackend::Ssh {
-                session_id: sid.clone(),
-                input_tx,
-            },
-            start_signal: Some(start_signal),
-        };
-        drop(sessions);
-        state
-            .channels
-            .lock()
-            .await
-            .insert(channel_id.clone(), active);
-
-        return Ok(OpenSshShellResult {
-            channel_id,
-            session_id: sid,
-        });
+) -> Result<String, String> {
+    {
+        let sessions = state.ssh_sessions.lock().await;
+        if let Some(sid) = sessions
+            .values()
+            .find(|e| e.profile_id == profile_id)
+            .map(|e| e.session_id.clone())
+        {
+            return Ok(sid);
+        }
     }
 
-    drop(sessions); // release lock while we connect
-
-    // need to create a new session - load profile from config
-    let config = state.get_config(&app).await?;
+    let config = state.get_config(app).await?;
     let profile = config
         .profiles
         .iter()
@@ -506,8 +495,6 @@ pub async fn open_ssh_shell(
         .ok_or("Profile not found")?
         .clone();
 
-    // no frontend in this path (new tab / reconnect), so saved secrets come straight
-    // from the keychain. the passphrase arg is a fallback for an unsaved one.
     let mode = profile.auth_mode.clone();
     let pp = if mode == crate::config::AuthMode::KeyFile && profile.has_passphrase {
         crate::config::keychain_get(&crate::config::passphrase_account(&profile.id)).or(passphrase)
@@ -533,45 +520,74 @@ pub async fn open_ssh_shell(
 
     let session_id = uuid::Uuid::new_v4().to_string();
 
-    // update last_connected
-    let mut cfg = state.get_config(&app).await?;
+    let mut cfg = state.get_config(app).await?;
     if let Some(p) = cfg.profiles.iter_mut().find(|p| p.id == profile_id) {
         p.last_connected = Some(chrono_now());
     }
-    cfg.last_profile_id = Some(profile_id.clone());
-    state.update_config(&app, cfg).await?;
+    cfg.last_profile_id = Some(profile_id.to_string());
+    state.update_config(app, cfg).await?;
 
-    // open shell on the new session
-    let mut ssh_session = session;
-    let channel = ssh_session.open_shell(cols, rows).await?;
+    state.ssh_sessions.lock().await.insert(
+        session_id.clone(),
+        SshSessionEntry {
+            session_id: session_id.clone(),
+            profile_id: profile_id.to_string(),
+            ssh: session,
+            channel_count: 0,
+            sftp: None,
+        },
+    );
+
+    Ok(session_id)
+}
+
+/// stand up (or reuse) a session for a profile without opening a shell. session restore
+/// leans on this to back editor tabs whose host carries no shell tab of its own.
+#[tauri::command]
+pub async fn ensure_ssh_session(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    profile_id: String,
+    passphrase: Option<String>,
+) -> Result<String, String> {
+    ensure_session_for_profile(&app, &state, &profile_id, passphrase).await
+}
+
+/// connect to a profile (or reuse existing session) and open a shell in one call.
+/// used by the tab dropdown for opening new ssh tabs after initial connection
+#[tauri::command]
+pub async fn open_ssh_shell(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    profile_id: String,
+    cols: u32,
+    rows: u32,
+    passphrase: Option<String>,
+) -> Result<OpenSshShellResult, String> {
+    let session_id = ensure_session_for_profile(&app, &state, &profile_id, passphrase).await?;
+
+    let mut sessions = state.ssh_sessions.lock().await;
+    let entry = sessions.get_mut(&session_id).ok_or("Session not found")?;
+    let channel = entry.ssh.open_shell(cols, rows).await?;
     let channel_id = uuid::Uuid::new_v4().to_string();
 
     let (input_tx, start_signal) =
         ssh::spawn_channel_io(app, session_id.clone(), channel_id.clone(), channel);
+    entry.channel_count += 1;
 
-    let entry = SshSessionEntry {
-        session_id: session_id.clone(),
-        profile_id,
-        ssh: ssh_session,
-        channel_count: 1,
-        sftp: None,
+    let active = ActiveChannel {
+        backend: ChannelBackend::Ssh {
+            session_id: session_id.clone(),
+            input_tx,
+        },
+        start_signal: Some(start_signal),
     };
-
+    drop(sessions);
     state
-        .ssh_sessions
+        .channels
         .lock()
         .await
-        .insert(session_id.clone(), entry);
-    state.channels.lock().await.insert(
-        channel_id.clone(),
-        ActiveChannel {
-            backend: ChannelBackend::Ssh {
-                session_id: session_id.clone(),
-                input_tx,
-            },
-            start_signal: Some(start_signal),
-        },
-    );
+        .insert(channel_id.clone(), active);
 
     Ok(OpenSshShellResult {
         channel_id,

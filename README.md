@@ -6,7 +6,7 @@ An SSH client and terminal for people who think Windows Terminal is fine but wis
 
 [![Primary Repo](https://img.shields.io/badge/primary-Kurobox-purple?logo=forgejo&style=flat-square)](https://codex.kurobox.me/miyo-rin/KuroLink)
 [![GitHub Mirror](https://img.shields.io/badge/mirror-GitHub-gray?logo=github&style=flat-square)](https://github.com/miyo-hime/KuroLink)
-![Version](https://img.shields.io/badge/v0.17.0-orange?style=flat-square)
+![Version](https://img.shields.io/badge/v0.18.0-orange?style=flat-square)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)
 ![Built with Tauri](https://img.shields.io/badge/Tauri%202-24C8D8?logo=tauri&logoColor=white&style=flat-square)
 ![Svelte 5](https://img.shields.io/badge/Svelte%205-FF3E00?logo=svelte&logoColor=white&style=flat-square)

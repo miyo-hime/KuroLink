@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ConnectionProfile, HostStatus, SystemStats, AgentIdentityInfo, OpenSshShellResult, SessionInfo, LocalShellInfo, LocalShellId, SftpEntry } from "./types";
+import type { ConnectionProfile, HostStatus, SystemStats, AgentIdentityInfo, OpenSshShellResult, SessionInfo, LocalShellInfo, LocalShellId, SftpEntry, SavedSession } from "./types";
 
 // -- Config --
 
@@ -24,6 +24,13 @@ export const saveAppearance = (appearance: unknown) =>
 
 export const setWindowVibrancy = (mode: string) =>
   invoke<boolean>("set_window_vibrancy", { mode });
+
+// -- Session restore --
+
+export const getSession = () => invoke<SavedSession | null>("get_session");
+
+export const saveSession = (session: SavedSession) =>
+  invoke<void>("save_session", { session });
 
 // -- Secrets (os keychain, keyed by profile + kind) --
 
@@ -91,6 +98,11 @@ export const openShell = (sessionId: string, cols: number, rows: number) =>
 // connect-or-reuse + open shell in one call (used by tab dropdown)
 export const openSshShell = (profileId: string, cols: number, rows: number, passphrase?: string | null) =>
   invoke<OpenSshShellResult>("open_ssh_shell", { profileId, cols, rows, passphrase: passphrase ?? null });
+
+// connect-or-reuse a session WITHOUT a shell - session restore uses this to back
+// editor tabs whose host has no shell tab of its own
+export const ensureSshSession = (profileId: string, passphrase?: string | null) =>
+  invoke<string>("ensure_ssh_session", { profileId, passphrase: passphrase ?? null });
 
 export const detectLocalShells = () =>
   invoke<LocalShellInfo[]>("detect_local_shells");

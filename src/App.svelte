@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import type { ConnectionProfile, LocalShellId } from "./lib/types";
+  import type { ConnectionProfile, LocalShellId, SavedSession } from "./lib/types";
   import ConnectionScreen from "./components/ConnectionScreen.svelte";
   import Settings from "./components/Settings.svelte";
   import { appearance } from "./lib/appearance.svelte";
@@ -15,12 +15,14 @@
   let initialSessionId = $state<string | null>(null);
   let initialProfile = $state<ConnectionProfile | null>(null);
   let initialLocalShell = $state<LocalShellId | null>(null);
+  let initialRestore = $state<SavedSession | null>(null);
   let glitching = $state(false);
 
   function handleConnected(sid: string, _pid: string, prof: ConnectionProfile) {
     initialSessionId = sid;
     initialProfile = prof;
     initialLocalShell = null;
+    initialRestore = null;
     view = "terminal";
   }
 
@@ -28,6 +30,15 @@
     initialSessionId = null;
     initialProfile = null;
     initialLocalShell = shellType;
+    initialRestore = null;
+    view = "terminal";
+  }
+
+  function handleResume(saved: SavedSession) {
+    initialSessionId = null;
+    initialProfile = null;
+    initialLocalShell = null;
+    initialRestore = saved;
     view = "terminal";
   }
 
@@ -38,6 +49,7 @@
       initialSessionId = null;
       initialProfile = null;
       initialLocalShell = null;
+      initialRestore = null;
       view = "connect";
     }, 400);
   }
@@ -45,9 +57,9 @@
 
 <div class="app">
   {#if view === "connect"}
-    <ConnectionScreen onConnected={handleConnected} onLocalTerminal={handleLocalTerminal} />
+    <ConnectionScreen onConnected={handleConnected} onLocalTerminal={handleLocalTerminal} onResume={handleResume} />
   {/if}
-  {#if view === "terminal" && (initialLocalShell || (initialSessionId && initialProfile))}
+  {#if view === "terminal" && (initialRestore || initialLocalShell || (initialSessionId && initialProfile))}
     <div class={glitching ? "view-glitch-out" : ""} style="height: 100%; width: 100%;">
       {#await import("./components/MainView.svelte")}
         <div class="app-loading">LINKING TERMINAL...</div>
@@ -56,6 +68,7 @@
           {initialSessionId}
           {initialProfile}
           {initialLocalShell}
+          {initialRestore}
           onDisconnected={handleDisconnected}
         />
       {/await}
