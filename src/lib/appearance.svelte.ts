@@ -27,6 +27,13 @@ function applyCockpit(a: ResolvedTheme) {
   r.setProperty("--term-tint", a.tint);
 }
 
+// win10's acrylic can quietly bail; when the os won't hand us glass we drop the
+// transparent shell to opaque so the desktop doesn't show through. harmless on win11.
+function applyGlass(active: boolean) {
+  if (typeof document === "undefined") return;
+  document.documentElement.classList.toggle("no-glass", !active);
+}
+
 class AppearanceStore {
   presetId = $state(DEFAULT_PRESET_ID);
   overrides = $state<ThemeOverrides>({});
@@ -54,7 +61,7 @@ class AppearanceStore {
     const a = this.active;
     applyCockpit(a);
     this.#lastVibrancy = a.vibrancy;
-    setWindowVibrancy(a.vibrancy).catch(() => {});
+    setWindowVibrancy(a.vibrancy).then(applyGlass).catch(() => {});
   }
 
   openSettings() {
@@ -86,7 +93,7 @@ class AppearanceStore {
     applyCockpit(a);
     if (a.vibrancy !== this.#lastVibrancy) {
       this.#lastVibrancy = a.vibrancy;
-      setWindowVibrancy(a.vibrancy).catch(() => {});
+      setWindowVibrancy(a.vibrancy).then(applyGlass).catch(() => {});
     }
     if (this.#saveTimer) clearTimeout(this.#saveTimer);
     this.#saveTimer = setTimeout(() => {

@@ -128,6 +128,13 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* no glass = the os refused acrylic/blur (looking at you, win10) or depth is solid.
+   without this the transparent window would show a sharp slice of desktop. toggled
+   from appearance.svelte.ts off the vibrancy command's return. */
+.no-glass body {
+  background-color: rgba(8, 8, 14, 0.96);
+}
+
 /* ---- focus ---- */
 
 *:focus-visible {

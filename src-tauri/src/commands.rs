@@ -130,27 +130,32 @@ pub async fn save_appearance(
 /// swap the window's translucency. acrylic blurs everything behind, blur is
 /// lighter, none lets a flat preset stand on its own. windows-only; elsewhere
 /// the frontend tint carries the whole look, so this is a no-op.
+///
+/// returns whether glass is actually live. win10's acrylic flakes; when it does we
+/// fall back to the older blur, and if even that's refused we report false so the
+/// frontend can go opaque instead of letting the desktop bleed through the
+/// transparent shell. "none"/"solid" is an intentional no-glass, same signal.
 #[tauri::command]
 pub async fn set_window_vibrancy(
     #[allow(unused_variables)] window: tauri::WebviewWindow,
     #[allow(unused_variables)] mode: String,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     #[cfg(target_os = "windows")]
-    {
+    let active = {
         use window_vibrancy::{apply_acrylic, apply_blur, clear_acrylic, clear_blur};
         let _ = clear_acrylic(&window);
         let _ = clear_blur(&window);
         match mode.as_str() {
-            "blur" => {
-                let _ = apply_blur(&window, Some((6, 6, 14, 160)));
-            }
-            "none" => {}
-            _ => {
-                let _ = apply_acrylic(&window, Some((6, 6, 14, 180)));
-            }
+            "blur" => apply_blur(&window, Some((6, 6, 14, 160))).is_ok(),
+            "none" => false,
+            _ => apply_acrylic(&window, Some((6, 6, 14, 180)))
+                .or_else(|_| apply_blur(&window, Some((6, 6, 14, 180))))
+                .is_ok(),
         }
-    }
-    Ok(())
+    };
+    #[cfg(not(target_os = "windows"))]
+    let active = false;
+    Ok(active)
 }
 
 // passphrase

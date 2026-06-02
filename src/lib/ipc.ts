@@ -23,7 +23,7 @@ export const saveAppearance = (appearance: unknown) =>
   invoke<void>("save_appearance", { appearance });
 
 export const setWindowVibrancy = (mode: string) =>
-  invoke<void>("set_window_vibrancy", { mode });
+  invoke<boolean>("set_window_vibrancy", { mode });
 
 // -- Passphrase --
 

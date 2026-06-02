@@ -2,11 +2,11 @@
 
 # KuroLink
 
-Terminal emulator for people who think Windows Terminal is fine but wish it looked like a mecha command console.
+An SSH client and terminal for people who think Windows Terminal is fine but wish it looked like a mecha command console.
 
 [![Primary Repo](https://img.shields.io/badge/primary-Kurobox-purple?logo=forgejo&style=flat-square)](https://codex.kurobox.me/miyo-rin/KuroLink)
 [![GitHub Mirror](https://img.shields.io/badge/mirror-GitHub-gray?logo=github&style=flat-square)](https://github.com/miyo-hime/KuroLink)
-![Version](https://img.shields.io/badge/v0.11.1-orange?style=flat-square)
+![Version](https://img.shields.io/badge/v0.16.0-orange?style=flat-square)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)
 ![Built with Tauri](https://img.shields.io/badge/Tauri%202-24C8D8?logo=tauri&logoColor=white&style=flat-square)
 ![Svelte 5](https://img.shields.io/badge/Svelte%205-FF3E00?logo=svelte&logoColor=white&style=flat-square)
@@ -15,97 +15,86 @@ Terminal emulator for people who think Windows Terminal is fine but wish it look
 
 ## what is this
 
-A terminal app. Local shells, SSH connection profiles, live system stats, tabs you can drag around. The UI looks like NERV headquarters because I wanted it to.
+a thing I built for myself and a friend.
 
-**local terminals:**
-- PowerShell, CMD, WSL, Nu - launch from the connection screen or open new tabs on the fly
+we both have some servers lying around and we're forever sshing in to do small stuff. edit a config, tail a log, grab a file, check whether the disk filled up again. firing up VSCode's whole Remote-SSH for that felt like wheeling out a forklift to move a coffee cup. PuTTY does the job but looks like it's still 2003.
 
-**SSH:**
-- connect to remote servers with saved profiles, get a terminal
-- SSH agent support (OpenSSH on Windows, Pageant fallback) - agent mode is default
-- key file auth with optional encrypted passphrase storage (AES-256-GCM, tied to install)
-- host key verification (TOFU, checks `~/.ssh/known_hosts`, yells at you if the key changes)
-- connection drop detection - knows when your link dies instead of sitting there pretending everything is fine
+so: KuroLink. a terminal, an SFTP file browser, and a real code editor, all in one small window that happens to look like a mecha cockpit.
 
-**terminal:**
-- powered by ghostty-web - the actual Ghostty VT engine compiled to wasm, not a JS reimplementation. eats Nerd Fonts, emoji, and CJK without turning them into question-mark soup
-- PuTTY-style clipboard (select to copy, right-click to paste), clickable URLs, search, font zoom, 10k scrollback
-- multi-tab with drag reorder, dropdown menu, context menus, middle-click to close
-- keyboard shortcuts: `Ctrl+Tab`/`Ctrl+Shift+Tab` (cycle), `Ctrl+1-9` (jump), `Ctrl+Shift+W` (close), `Ctrl+Shift+T` (reopen)
+**built and tested on Windows 11 only** - it leans on a few win11-specific bits for the glassy look, so on win10 it should run and just drop the glass for a flat background (probably - nobody's actually checked). it's Apache 2.0, so if you want it to go further, the source is right there.
 
-**stats:**
-- local tabs show local system stats (CPU, memory, disk) via sysinfo
-- SSH tabs show remote stats (CPU temp, memory, disk, network) pulled over the connection
-- same UI either way, it just knows which machine to ask
+## what it does
 
-**looks:**
-- appearance presets - eight starting points (kurolink, ink, phosphor, catppuccin mocha, monokai, dracula, nord, gruvbox dark) you pick from a settings drawer (gear in the top bar / titlebar)
-- customize from there: per-color palette, font (5 bundled mono families) + size, glass opacity, window depth (acrylic/blur/solid), and crt effects (scanlines, vignette, glow). picking a preset recolors the *whole* cockpit, not just the terminal
-- live preview in the panel, everything persists to config
+**a terminal, local or remote**
+- local shells (PowerShell, CMD, WSL, Nu) and SSH sessions, side by side in tabs you can drag around
+- the real Ghostty engine under the hood (compiled to wasm), so Nerd Fonts, emoji and CJK render properly instead of turning into question-mark soup
+- select-to-copy / right-click-paste, clickable links, find-in-buffer, font zoom, 10k scrollback
+- shortcuts: `Ctrl+Tab` to cycle, `Ctrl+1-9` to jump, `Ctrl+Shift+W` to close, `Ctrl+Shift+T` to reopen
 
-**misc:**
-- portable - single `.exe`, config saves next to it, no installer
-- ~8MB binary because Tauri exists
-- window state persistence (size, position, maximized)
-- connection profiles auto-save
+**files, the part that replaced VSCode for us**
+- an SFTP file browser in a side panel - browse the remote box, rename, delete, make folders
+- open remote files in a proper editor right next to your terminals: syntax highlighting, multi-cursor, minimap, the works. `Ctrl+S` saves straight back over SSH
+- view images inline, preview SVGs live as you edit
+- drag-and-drop upload, file-picker upload, download - all with a progress tray you can cancel from
+
+**ssh that behaves**
+- saved connection profiles; SSH agent by default (OpenSSH on Windows, Pageant fallback), or a key file with an optional encrypted passphrase
+- host-key checking that trusts on first use and yells if a key ever changes
+- notices when the link drops instead of sitting there pretending everything's fine
+
+**stats, whichever machine you're looking at**
+- local tabs show your PC, SSH tabs show the remote box - CPU, temperature, memory, disk, network - same readout either way, it just knows who to ask
+
+**looks worth keeping the lights on for**
+- eight themes out of the box (kurolink, ink, phosphor, catppuccin mocha, monokai, dracula, nord, gruvbox dark), then tweak palette, font, glass and CRT effects from a settings drawer with a live preview
+- picking a theme recolors the whole app, not just the terminal text
+
+**and the boring-but-nice basics**
+- a single portable exe, no installer, config saves right next to it (it's Tauri, not Electron, so it's megabytes, not a small country's worth of disk)
+- remembers your window size, position, and last connection
 
 ## download
 
-Grab the latest `.exe` from [Releases](https://codex.kurobox.me/miyo-rin/KuroLink/releases) (or from the [GitHub mirror](https://github.com/miyo-hime/KuroLink/releases)). Run it. That's the whole install process.
+Grab the latest `.exe` from [Releases](https://codex.kurobox.me/miyo-rin/KuroLink/releases) (or the [GitHub mirror](https://github.com/miyo-hime/KuroLink/releases)). Run it. That's the whole install.
 
-Config saves as `kurolink.json` next to the exe. Move the folder wherever you want.
+Config saves as `kurolink.json` next to the exe - move the folder wherever you like. Windows 11 is the tested target; see the note up top if you're on something older.
 
-## usage
+## first run
 
-Run it. You get a connection screen. From there you can:
+You land on a connection screen. From there:
 
 - **open a local shell** - hit PowerShell, CMD, or WSL in the LOCAL panel
-- **connect to a server** - fill in host/port/username, pick your auth mode, hit CONNECT
+- **connect to a server** - fill in host / port / username, pick your auth mode, hit CONNECT
 
-Once you're in, the `+` button clones whatever your current tab is. The dropdown arrow next to it gives you the full menu - local shells and saved SSH profiles. Mix and match. Each tab is independent.
+Once you're in, the `+` button clones your current tab and the dropdown arrow beside it opens the full menu - local shells and saved SSH profiles, mix and match. Every tab is independent.
 
-Profiles auto-save. The app remembers your last connection and auto-probes it on launch. SSH agent is the default auth mode - if you have keys loaded in your system agent, it just works.
+Profiles auto-save, the app remembers your last connection and probes it on launch, and SSH agent is the default auth mode - if your keys are loaded in your system agent, it just works.
 
-## host requirements (SSH only)
+## ssh host requirements
 
-The live stats on remote connections are pulled by running standard Linux commands over SSH. Your target machine needs:
+The live stats on remote connections come from running a few standard Linux commands over SSH. Your target needs:
 
-- `free`, `df`, `awk`, `uptime` - if you're running any normal Linux distro these are already there
-- `/sys/class/thermal/thermal_zone*/temp` - CPU temperature. auto-detects the right zone. if your device doesn't have one, it just won't show up
+- `free`, `df`, `awk`, `uptime` - present on basically any normal distro already
+- `/sys/class/thermal/thermal_zone*/temp` for CPU temperature (auto-detects the zone; if your device has none, it just won't show)
 - network interface auto-detected via `ip route show default`
 
-tl;dr if it's a Raspberry Pi running Raspberry Pi OS, everything just works. if it's something else, most things will work and the rest will gracefully not show up. local shells don't need any of this obviously.
+tl;dr if it's a Raspberry Pi on Raspberry Pi OS, everything works. anything else, most things work and the rest quietly don't show up. local shells need none of this, obviously.
 
 ## building from source
 
-Most people should just download the release. If you want to build it yourself:
+Most people should just download the release. If you'd rather build it:
 
 - Node.js 18+, Rust stable, Visual Studio Build Tools (C++ workload)
 - `npm install && npx tauri build`
 - go make coffee
 
-> **Windows note:** We use the `ring` crypto backend because the default (`aws-lc-rs`) needs NASM installed. If you have NASM, you can switch back in `Cargo.toml`. You probably won't notice the difference.
-
-## roadmap
-
-- [x] Local shells (PowerShell, CMD, WSL)
-- [x] SSH terminal with multi-tab
-- [x] Independent tabs with drag reorder, dropdown, keyboard shortcuts
-- [x] Connection profiles with SSH agent support
-- [x] Live system stats (local + remote)
-- [x] NERV/Gundam command console aesthetic
-- [x] Host key verification, connection drop detection, encrypted passphrase storage
-- [x] ghostty-web terminal engine (real Ghostty VT parser in wasm, with built-from-scratch search)
-- [x] Custom window chrome (borderless cockpit, the titlebar got the mecha treatment too)
-- [x] Appearance presets + live customization (theme, font, glass, effects), whole-cockpit retint
-- [ ] SFTP file browser / transfers
-- [ ] Split panes, session restore, command palette
+> **Windows note:** we use the `ring` crypto backend because the default (`aws-lc-rs`) wants NASM installed. if you have NASM, switch it back in `Cargo.toml`. you won't notice the difference.
 
 ## credits
 
 the terminal core is [ghostty-web](https://github.com/coder/ghostty-web) by coder - a wasm build of [Ghostty](https://ghostty.org)'s VT engine by Mitchell Hashimoto and contributors. they did the genuinely hard part (parsing a terminal correctly, grapheme clusters and all); KuroLink just wraps it in a mecha costume. go give both a star.
 
-also standing on [Tauri](https://tauri.app), [russh](https://github.com/Eugeny/russh), and [portable-pty](https://crates.io/crates/portable-pty) - open source is a relay race.
+also standing on [Tauri](https://tauri.app), [russh](https://github.com/Eugeny/russh), [russh-sftp](https://crates.io/crates/russh-sftp), [CodeMirror](https://codemirror.net), and [portable-pty](https://crates.io/crates/portable-pty) - open source is a relay race.
 
 ## license
 
