@@ -80,12 +80,25 @@ export interface SavedSession {
   activeIndex: number;
 }
 
-export interface TerminalTab {
-  // the tab's unique key. for ssh/local it's the real PTY channel; for editor
-  // tabs it's a synthetic `editor:<uuid>` (no channel behind it).
-  channelId: string;
+// paneId doubles as the IPC handle - ssh/local it's the real PTY channel, editor a
+// synthetic `editor:<uuid>`. that's why splitting panes needed zero backend change.
+export interface Pane {
+  paneId: string;
   title: string;
   backend: TabBackend;
+}
+
+// the split tree. binary on purpose: every split is one divider (ratio = a's
+// fraction of the axis), every close collapses the split into its surviving child.
+export type PaneNode =
+  | { kind: "leaf"; pane: Pane }
+  | { kind: "split"; id: string; dir: "h" | "v"; a: PaneNode; b: PaneNode; ratio: number };
+
+// id is synthetic and stable across splits; the display title comes from the active pane.
+export interface Tab {
+  id: string;
+  layout: PaneNode;
+  activePaneId: string;
 }
 
 export interface SessionInfo {

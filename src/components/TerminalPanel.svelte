@@ -8,14 +8,17 @@
 
   interface Props {
     channelId: string;
-    active: boolean;
+    // tab is the visible one: render, fit, write live output (vs buffer)
+    visible: boolean;
+    // this pane holds keyboard focus within its tab
+    focused: boolean;
     searchVisible: boolean;
     onSearchToggle: () => void;
     onClosed?: () => void;
     onTitleChange?: (title: string) => void;
   }
 
-  let { channelId, active, searchVisible, onSearchToggle, onClosed, onTitleChange }: Props = $props();
+  let { channelId, visible, focused, searchVisible, onSearchToggle, onClosed, onTitleChange }: Props = $props();
 
   const MIN_FONT_SIZE = 10;
   const MAX_FONT_SIZE = 24;
@@ -126,6 +129,9 @@
         if (ev.ctrlKey && ev.key === "Tab") return true;
         if (ev.ctrlKey && !ev.shiftKey && ev.code.match(/^Digit[1-9]$/)) return true;
         if (ev.ctrlKey && ev.shiftKey && (ev.code === "KeyW" || ev.code === "KeyT")) return true;
+        // split + focus-hop chords belong to the window dispatcher, not the pty
+        if (ev.altKey && ev.shiftKey && (ev.code === "Minus" || ev.code === "Equal")) return true;
+        if (ev.altKey && !ev.ctrlKey && ev.code.match(/^Arrow(Left|Right|Up|Down)$/)) return true;
 
         if (ev.ctrlKey && ev.shiftKey) {
           if (ev.code === "KeyC") {
@@ -193,7 +199,7 @@
       let unlistenClosed: (() => void) | null = null;
 
       onTerminalOutput(channelId, (data) => {
-        if (active) {
+        if (visible) {
           term!.write(data);
         } else {
           pendingOutput.push(data);
@@ -219,7 +225,7 @@
       });
 
       const resizeObserver = new ResizeObserver(() => {
-        if (!active || resizeFrame != null) return;
+        if (!visible || resizeFrame != null) return;
         resizeFrame = requestAnimationFrame(() => {
           resizeFrame = null;
           addon.fit();
@@ -360,8 +366,11 @@
     }
   });
 
+  // becoming visible (tab switch / fresh split sibling): re-fit to the new box and
+  // drain whatever streamed in while we were buffering. every visible pane does this,
+  // focused or not - that's how a just-split neighbor reflows.
   $effect(() => {
-    if (!active) return;
+    if (!visible) return;
 
     const frame = requestAnimationFrame(() => {
       fitAddon?.fit();
@@ -371,9 +380,14 @@
         pendingOutputBytes = 0;
         term?.write(pending.join(""));
       }
-      term?.focus();
     });
 
+    return () => cancelAnimationFrame(frame);
+  });
+
+  $effect(() => {
+    if (!focused) return;
+    const frame = requestAnimationFrame(() => term?.focus());
     return () => cancelAnimationFrame(frame);
   });
 
@@ -457,7 +471,7 @@
 </script>
 
 <div
-  class="terminal-wrapper {active ? 'terminal-active' : 'terminal-hidden'} {bellFlash ? 'terminal-bell' : ''}"
+  class="terminal-wrapper {visible ? 'terminal-active' : 'terminal-hidden'} {bellFlash ? 'terminal-bell' : ''}"
   class:fx-scanlines={currentAppearance.effects.scanlines}
   class:fx-vignette={currentAppearance.effects.vignette}
   class:fx-glow={currentAppearance.effects.glow}

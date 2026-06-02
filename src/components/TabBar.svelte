@@ -1,14 +1,15 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import type { TerminalTab, ConnectionProfile, LocalShellId, LocalShellInfo } from "../lib/types";
+  import type { Tab, Pane, ConnectionProfile, LocalShellId, LocalShellInfo } from "../lib/types";
+  import { panesOf, findPane } from "../lib/paneTree";
 
   interface Props {
-    tabs: TerminalTab[];
+    tabs: Tab[];
     activeTabId: string | null;
     dirtyTabs: Set<string>;
     profiles: ConnectionProfile[];
-    onSelectTab: (channelId: string) => void;
-    onCloseTab: (channelId: string) => void;
+    onSelectTab: (tabId: string) => void;
+    onCloseTab: (tabId: string) => void;
     onNewTab: () => void;
     onNewSshTab: (profileId: string) => void;
     onNewLocalTab: (shellType: LocalShellId) => void;
@@ -33,7 +34,17 @@
   interface ContextMenu {
     x: number;
     y: number;
-    channelId: string;
+    tabId: string;
+  }
+
+  function head(tab: Tab): Pane | null {
+    return findPane(tab.layout, tab.activePaneId);
+  }
+  function isSplit(tab: Tab): boolean {
+    return panesOf(tab.layout).length > 1;
+  }
+  function isDirty(tab: Tab): boolean {
+    return panesOf(tab.layout).some((p) => dirtyTabs.has(p.paneId));
   }
 
   let dropdownOpen = $state(false);
@@ -101,34 +112,34 @@
   }
 
   // -- context menu --
-  function handleContextMenu(e: MouseEvent, channelId: string) {
+  function handleContextMenu(e: MouseEvent, tabId: string) {
     e.preventDefault();
-    contextMenu = { x: e.clientX, y: e.clientY, channelId };
+    contextMenu = { x: e.clientX, y: e.clientY, tabId };
   }
 
   // middle-click to close
-  function handleMouseDown(e: MouseEvent, channelId: string) {
+  function handleMouseDown(e: MouseEvent, tabId: string) {
     if (e.button === 1) {
       e.preventDefault();
-      onCloseTab(channelId);
+      onCloseTab(tabId);
     }
   }
 
   // context menu actions
   function contextCloseOthers() {
     if (!contextMenu) return;
-    const target = contextMenu.channelId;
+    const target = contextMenu.tabId;
     tabs.forEach((t) => {
-      if (t.channelId !== target) onCloseTab(t.channelId);
+      if (t.id !== target) onCloseTab(t.id);
     });
     contextMenu = null;
   }
 
   function contextCloseToRight() {
     if (!contextMenu) return;
-    const idx = tabs.findIndex((t) => t.channelId === contextMenu!.channelId);
+    const idx = tabs.findIndex((t) => t.id === contextMenu!.tabId);
     if (idx === -1) return;
-    tabs.slice(idx + 1).forEach((t) => onCloseTab(t.channelId));
+    tabs.slice(idx + 1).forEach((t) => onCloseTab(t.id));
     contextMenu = null;
   }
 
@@ -150,16 +161,17 @@
 
 <div class="tab-bar">
   <div class="tab-scroll">
-    {#each tabs as tab, index (tab.channelId)}
+    {#each tabs as tab, index (tab.id)}
+      {@const h = head(tab)}
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <div
         class="tab"
-        class:tab-active={tab.channelId === activeTabId}
+        class:tab-active={tab.id === activeTabId}
         class:tab-dragging={dragIndex === index}
         class:tab-drop-target={dropIndex === index && dragIndex !== index}
-        onclick={() => onSelectTab(tab.channelId)}
-        onmousedown={(e) => handleMouseDown(e, tab.channelId)}
-        oncontextmenu={(e) => handleContextMenu(e, tab.channelId)}
+        onclick={() => onSelectTab(tab.id)}
+        onmousedown={(e) => handleMouseDown(e, tab.id)}
+        oncontextmenu={(e) => handleContextMenu(e, tab.id)}
         draggable="true"
         ondragstart={(e) => handleDragStart(e, index)}
         ondragover={(e) => handleDragOver(e, index)}
@@ -167,23 +179,24 @@
         ondragend={handleDragEnd}
         role="tab"
         tabindex="0"
-        aria-selected={tab.channelId === activeTabId}
+        aria-selected={tab.id === activeTabId}
       >
-        {#if tab.backend.kind === "ssh"}
-          <span class="tab-indicator tab-indicator-ssh" title="SSH: {tab.backend.profileName}"></span>
-        {:else if tab.backend.kind === "editor"}
-          <span class="tab-indicator tab-indicator-editor" title="Editing: {tab.backend.path}"></span>
+        {#if h?.backend.kind === "ssh"}
+          <span class="tab-indicator tab-indicator-ssh" title="SSH: {h.backend.profileName}"></span>
+        {:else if h?.backend.kind === "editor"}
+          <span class="tab-indicator tab-indicator-editor" title="Editing: {h.backend.path}"></span>
         {:else}
-          <span class="tab-indicator tab-indicator-local" title="Local: {tab.backend.shellType}"></span>
+          <span class="tab-indicator tab-indicator-local" title="Local: {h?.backend.kind === 'local' ? h.backend.shellType : ''}"></span>
         {/if}
         <span class="tab-index">{index + 1}.</span>
-        <span class="tab-title">{tab.title}</span>
-        {#if dirtyTabs.has(tab.channelId)}<span class="tab-dirty" title="Unsaved changes">●</span>{/if}
+        <span class="tab-title">{h?.title ?? "tab"}</span>
+        {#if isSplit(tab)}<span class="tab-split" title="Split into panes">⊞</span>{/if}
+        {#if isDirty(tab)}<span class="tab-dirty" title="Unsaved changes">●</span>{/if}
         <button
           class="tab-close"
           onclick={(e) => {
             e.stopPropagation();
-            onCloseTab(tab.channelId);
+            onCloseTab(tab.id);
           }}
         >
           ×
@@ -245,7 +258,7 @@
       <button
         class="tab-context-item"
         onclick={() => {
-          onCloseTab(contextMenu!.channelId);
+          onCloseTab(contextMenu!.tabId);
           contextMenu = null;
         }}
       >
@@ -256,7 +269,7 @@
           Close Others
         </button>
       {/if}
-      {#if tabs.findIndex((t) => t.channelId === contextMenu!.channelId) < tabs.length - 1}
+      {#if tabs.findIndex((t) => t.id === contextMenu!.tabId) < tabs.length - 1}
         <button class="tab-context-item" onclick={contextCloseToRight}>
           Close to Right
         </button>
@@ -408,6 +421,19 @@
     font-size: 0.5rem;
     line-height: 1;
     flex-shrink: 0;
+  }
+
+  .tab-split {
+    color: var(--text-dim);
+    font-size: 0.7rem;
+    line-height: 1;
+    flex-shrink: 0;
+    opacity: 0.7;
+  }
+
+  .tab-active .tab-split {
+    color: var(--accent-primary);
+    opacity: 0.85;
   }
 
   .tab-close {

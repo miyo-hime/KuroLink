@@ -36,11 +36,12 @@
     channelId: string;
     sessionId: string;
     path: string;
-    active: boolean;
+    visible: boolean;
+    focused: boolean;
     onDirtyChange: (channelId: string, dirty: boolean) => void;
   }
 
-  let { channelId, sessionId, path, active, onDirtyChange }: Props = $props();
+  let { channelId, sessionId, path, visible, focused, onDirtyChange }: Props = $props();
 
   // past this, skip syntax highlight + minimap and open as plain fast text - a 50MB
   // log shouldn't make lezer chew the cpu for color nobody's reading
@@ -346,11 +347,11 @@
   });
 
   $effect(() => {
-    if (active && view) view.focus();
+    if (focused && view) view.focus();
   });
 </script>
 
-<div class="editor" class:hidden={!active}>
+<div class="editor" class:hidden={!visible}>
   <div class="editor-bar">
     {#if !image}
       <span class="editor-dot" class:dirty></span>

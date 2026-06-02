@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
   import { DEFAULT_LOCAL_SHELLS } from "../lib/types";
-  import type { ConnectionProfile, TerminalTab, SystemStats, ConnectionStatus, TabBackend, LocalShellId, LocalShellInfo, SavedSession, SavedTab } from "../lib/types";
+  import type { ConnectionProfile, Pane, Tab, SystemStats, ConnectionStatus, TabBackend, LocalShellId, LocalShellInfo, SavedSession, SavedTab } from "../lib/types";
+  import { leafOf, panesOf, findPane, mapPanes, splitAt, removePane, setRatio } from "../lib/paneTree";
   import { attachCommandKeys } from "../lib/shortcuts";
   import { commands, type Command } from "../lib/commands.svelte";
   import { appearance } from "../lib/appearance.svelte";
@@ -26,6 +27,7 @@
   import FileBrowser from "./FileBrowser.svelte";
   import TransferTray from "./TransferTray.svelte";
   import CommandPalette from "./CommandPalette.svelte";
+  import PaneTree from "./PaneTree.svelte";
   import { transfers } from "../lib/transfers.svelte";
 
   interface Props {
@@ -51,14 +53,15 @@
     if (!EditorPanel) import("./EditorPanel.svelte").then((m) => (EditorPanel = m.default));
   }
 
-  let tabs = $state<TerminalTab[]>([]);
+  let tabs = $state<Tab[]>([]);
   let activeTabId = $state<string | null>(null);
   let stats = $state<SystemStats | null>(null);
   let prevStats = $state<SystemStats | null>(null);
   let searchVisible = $state(false);
   let filesVisible = $state(false);
-  // editor dirty state lives OUTSIDE tabs on purpose - writing it into a tab object
-  // would reassign `tabs` on every keystroke and yank focus out of the textarea
+  // editor dirty state lives OUTSIDE the tree on purpose - writing it into a pane
+  // would rebuild `tabs` on every keystroke and yank focus out of the textarea.
+  // keyed by the editor pane's paneId.
   let dirtyTabs = $state<Set<string>>(new Set());
   let lostSessions = $state<Set<string>>(new Set());
   let reconnecting = $state(false);
@@ -67,39 +70,44 @@
 
   let tabCount = 0;
   let sessionListeners = new Map<string, UnlistenFn>();
-  let closedTabStack: TerminalTab[] = [];
+  let closedPaneStack: Pane[] = [];
   let statsInFlight = false;
   let titleTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-  // derived state from active tab
-  let activeTab = $derived(tabs.find((t) => t.channelId === activeTabId));
+  function allPanes(): Pane[] {
+    return tabs.flatMap((t) => panesOf(t.layout));
+  }
+
+  // active pane = the showing tab's focused pane. stats, topbar, files all follow it.
+  let activeTab = $derived(tabs.find((t) => t.id === activeTabId));
+  let activePane = $derived(activeTab ? findPane(activeTab.layout, activeTab.activePaneId) : null);
   let activeSessionId = $derived(
-    activeTab && (activeTab.backend.kind === "ssh" || activeTab.backend.kind === "editor")
-      ? activeTab.backend.sessionId
+    activePane && (activePane.backend.kind === "ssh" || activePane.backend.kind === "editor")
+      ? activePane.backend.sessionId
       : null,
   );
   let activeHostname = $derived(
-    activeTab?.backend.kind === "ssh"
-      ? activeTab.backend.profileName
-      : activeTab?.backend.kind === "editor"
-        ? basename(activeTab.backend.path)
-        : activeTab?.backend.kind === "local"
-          ? activeTab.backend.shellType.toUpperCase()
+    activePane?.backend.kind === "ssh"
+      ? activePane.backend.profileName
+      : activePane?.backend.kind === "editor"
+        ? basename(activePane.backend.path)
+        : activePane?.backend.kind === "local"
+          ? activePane.backend.shellType.toUpperCase()
           : "",
   );
   let isActiveLost = $derived(activeSessionId ? lostSessions.has(activeSessionId) : false);
   let connectionStatus = $derived<ConnectionStatus>(isActiveLost ? "lost" : "connected");
   let activeLatency = $derived(
-    (activeTab?.backend.kind === "ssh" || activeTab?.backend.kind === "editor") && stats
+    (activePane?.backend.kind === "ssh" || activePane?.backend.kind === "editor") && stats
       ? stats.latency_ms
       : null,
   );
-  // sftp needs a live ssh session - local tabs and dead links don't get the panel
+  // sftp needs a live ssh session - local panes and dead links don't get the panel
   let filesAvailable = $derived(activeSessionId != null && !isActiveLost);
 
   // first time a live ssh session lands in focus, swing the browser open - if you're
   // on a remote box you almost certainly want its fs in view. once only (plain flag,
-  // not $state), so closing it sticks and reconnects/tab-hops don't keep re-popping it.
+  // not $state), so closing it sticks and reconnects/pane-hops don't keep re-popping it.
   let hasAutoOpenedFiles = false;
   $effect(() => {
     if (filesAvailable && !hasAutoOpenedFiles) {
@@ -108,19 +116,29 @@
     }
   });
 
-  // open a shell on an existing ssh session (used for initial tab + "+" duplication)
+  function basename(p: string): string {
+    const i = p.lastIndexOf("/");
+    return i < 0 ? p : p.slice(i + 1);
+  }
+
+  function profileLabel(profileId: string): string {
+    const p = profiles.find((p) => p.id === profileId);
+    return p?.name || p?.host || "SSH";
+  }
+
+  function addTab(pane: Pane) {
+    const tab: Tab = { id: `tab:${crypto.randomUUID()}`, layout: leafOf(pane), activePaneId: pane.paneId };
+    tabs = [...tabs, tab];
+    activeTabId = tab.id;
+  }
+
+  // open a shell on an existing ssh session (used for the initial tab)
   async function createSshTabFromSession(sessionId: string, profile: ConnectionProfile) {
     try {
       const channelId = await openShell(sessionId, 80, 24);
       tabCount += 1;
       const name = profile.name || profile.host;
-      const tab: TerminalTab = {
-        channelId,
-        title: `${name} ${tabCount}`,
-        backend: { kind: "ssh", sessionId, profileId: profile.id, profileName: name },
-      };
-      tabs = [...tabs, tab];
-      activeTabId = channelId;
+      addTab({ paneId: channelId, title: `${name} ${tabCount}`, backend: { kind: "ssh", sessionId, profileId: profile.id, profileName: name } });
     } catch (e) {
       console.error("failed to open shell:", e);
     }
@@ -130,13 +148,7 @@
     try {
       const channelId = await openLocalShell(shellType, 80, 24);
       tabCount += 1;
-      const tab: TerminalTab = {
-        channelId,
-        title: `${shellType} ${tabCount}`,
-        backend: { kind: "local", shellType },
-      };
-      tabs = [...tabs, tab];
-      activeTabId = channelId;
+      addTab({ paneId: channelId, title: `${shellType} ${tabCount}`, backend: { kind: "local", shellType } });
     } catch (e) {
       console.error("failed to open local shell:", e);
     }
@@ -149,29 +161,18 @@
       tabCount += 1;
       const profile = profiles.find((p) => p.id === profileId);
       const name = profile?.name || profile?.host || "SSH";
-      const tab: TerminalTab = {
-        channelId: result.channel_id,
-        title: `${name} ${tabCount}`,
-        backend: { kind: "ssh", sessionId: result.session_id, profileId, profileName: name },
-      };
-      tabs = [...tabs, tab];
-      activeTabId = result.channel_id;
+      addTab({ paneId: result.channel_id, title: `${name} ${tabCount}`, backend: { kind: "ssh", sessionId: result.session_id, profileId, profileName: name } });
     } catch (e) {
       console.error("failed to open ssh shell:", e);
     }
   }
 
-  function basename(p: string): string {
-    const i = p.lastIndexOf("/");
-    return i < 0 ? p : p.slice(i + 1);
-  }
-
-  // editor tabs carry their own profileId, so this still resolves after the last shell closes.
+  // editor panes carry their own profileId, so this still resolves after the last shell closes.
   function profileForSession(sessionId: string): string | null {
-    for (const t of tabs) {
-      if (t.backend.kind === "ssh" && t.backend.sessionId === sessionId) return t.backend.profileId;
-      if (t.backend.kind === "editor" && t.backend.sessionId === sessionId && t.backend.profileId)
-        return t.backend.profileId;
+    for (const p of allPanes()) {
+      if (p.backend.kind === "ssh" && p.backend.sessionId === sessionId) return p.backend.profileId;
+      if (p.backend.kind === "editor" && p.backend.sessionId === sessionId && p.backend.profileId)
+        return p.backend.profileId;
     }
     return null;
   }
@@ -180,35 +181,166 @@
   // derived from the session unless the caller already knows it (restore does)
   function openEditorTab(sessionId: string, path: string, profileId?: string | null) {
     ensureEditorPanel();
-    const existing = tabs.find(
-      (t) =>
-        t.backend.kind === "editor" &&
-        t.backend.sessionId === sessionId &&
-        t.backend.path === path,
-    );
-    if (existing) {
-      activeTabId = existing.channelId;
-      return;
+    for (const t of tabs) {
+      const existing = panesOf(t.layout).find(
+        (p) => p.backend.kind === "editor" && p.backend.sessionId === sessionId && p.backend.path === path,
+      );
+      if (existing) {
+        activeTabId = t.id;
+        tabs = tabs.map((x) => (x.id === t.id ? { ...x, activePaneId: existing.paneId } : x));
+        return;
+      }
     }
     const pid = profileId ?? profileForSession(sessionId);
-    const channelId = `editor:${crypto.randomUUID()}`;
-    const tab: TerminalTab = {
-      channelId,
-      title: basename(path),
-      backend: { kind: "editor", sessionId, profileId: pid, path },
-    };
-    tabs = [...tabs, tab];
-    activeTabId = channelId;
+    const paneId = `editor:${crypto.randomUUID()}`;
+    addTab({ paneId, title: basename(path), backend: { kind: "editor", sessionId, profileId: pid, path } });
   }
 
-  // editor panel tells us when its buffer diverges - tracked off to the side so
-  // the tab strip can show a dot without disturbing the editor's DOM
-  function setEditorDirty(channelId: string, dirty: boolean) {
-    if (dirtyTabs.has(channelId) === dirty) return;
-    const next = new Set(dirtyTabs);
-    if (dirty) next.add(channelId);
-    else next.delete(channelId);
-    dirtyTabs = next;
+  // an editor has no pty to clone, so a split off one drops a shell on its host: borrow
+  // a sibling ssh session, falling back to the profileId baked on the editor itself.
+  async function makeSiblingPane(pane: Pane): Promise<Pane | null> {
+    if (pane.backend.kind === "local") {
+      const shellType = pane.backend.shellType;
+      try {
+        const channelId = await openLocalShell(shellType, 80, 24);
+        tabCount += 1;
+        return { paneId: channelId, title: `${shellType} ${tabCount}`, backend: { kind: "local", shellType } };
+      } catch (e) {
+        console.error("failed to open local shell:", e);
+        return null;
+      }
+    }
+
+    const sessionId = pane.backend.sessionId;
+    let info: { profileId: string; profileName: string } | null =
+      pane.backend.kind === "ssh"
+        ? { profileId: pane.backend.profileId, profileName: pane.backend.profileName }
+        : null;
+    if (!info) {
+      const sib = allPanes().find((p) => p.backend.kind === "ssh" && p.backend.sessionId === sessionId);
+      if (sib && sib.backend.kind === "ssh") info = { profileId: sib.backend.profileId, profileName: sib.backend.profileName };
+    }
+    if (!info && pane.backend.kind === "editor" && pane.backend.profileId) {
+      info = { profileId: pane.backend.profileId, profileName: profileLabel(pane.backend.profileId) };
+    }
+    if (!info) return null;
+
+    try {
+      const channelId = await openShell(sessionId, 80, 24);
+      tabCount += 1;
+      return { paneId: channelId, title: `${info.profileName} ${tabCount}`, backend: { kind: "ssh", sessionId, profileId: info.profileId, profileName: info.profileName } };
+    } catch (e) {
+      console.error("failed to open shell:", e);
+      return null;
+    }
+  }
+
+  async function handleNewTab() {
+    if (!activePane) return;
+    const pane = await makeSiblingPane(activePane);
+    if (pane) addTab(pane);
+  }
+
+  async function splitActivePane(dir: "h" | "v") {
+    const tab = activeTab;
+    const pane = activePane;
+    if (!tab || !pane) return;
+    const sibling = await makeSiblingPane(pane);
+    if (!sibling) return;
+    const layout = splitAt(tab.layout, pane.paneId, dir, sibling);
+    tabs = tabs.map((t) => (t.id === tab.id ? { ...t, layout, activePaneId: sibling.paneId } : t));
+  }
+
+  function focusPane(tabId: string, paneId: string) {
+    activeTabId = tabId;
+    tabs = tabs.map((t) => (t.id === tabId ? { ...t, activePaneId: paneId } : t));
+  }
+
+  function setTabRatio(tabId: string, splitId: string, ratio: number) {
+    tabs = tabs.map((t) => (t.id === tabId ? { ...t, layout: setRatio(t.layout, splitId, ratio) } : t));
+  }
+
+  // nearest-pane-center in the pressed direction, geometry read off the DOM - so
+  // arbitrary nesting never needs special-casing.
+  function focusDir(dir: "left" | "right" | "up" | "down") {
+    const tab = activeTab;
+    if (!tab) return;
+    const ids = new Set(panesOf(tab.layout).map((p) => p.paneId));
+    const els = Array.from(document.querySelectorAll<HTMLElement>("[data-pane-id]")).filter(
+      (e) => e.dataset.paneId && ids.has(e.dataset.paneId),
+    );
+    const cur = els.find((e) => e.dataset.paneId === tab.activePaneId);
+    if (!cur) return;
+    const cr = cur.getBoundingClientRect();
+    const cx = cr.left + cr.width / 2;
+    const cy = cr.top + cr.height / 2;
+
+    let best: string | null = null;
+    let bestDist = Infinity;
+    for (const e of els) {
+      const pid = e.dataset.paneId!;
+      if (pid === tab.activePaneId) continue;
+      const r = e.getBoundingClientRect();
+      const dx = r.left + r.width / 2 - cx;
+      const dy = r.top + r.height / 2 - cy;
+      if (dir === "left" && dx >= -1) continue;
+      if (dir === "right" && dx <= 1) continue;
+      if (dir === "up" && dy >= -1) continue;
+      if (dir === "down" && dy <= 1) continue;
+      const dist = dx * dx + dy * dy;
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = pid;
+      }
+    }
+    if (best) focusPane(tab.id, best);
+  }
+
+  // when it's the last pane in its tab, the tab goes too.
+  async function closePane(paneId: string) {
+    const tab = tabs.find((t) => panesOf(t.layout).some((p) => p.paneId === paneId));
+    if (!tab) return;
+    const pane = findPane(tab.layout, paneId);
+    if (pane) closedPaneStack.push(pane);
+
+    if (pane && pane.backend.kind !== "editor") {
+      await closeShell(paneId).catch(() => {});
+    } else if (dirtyTabs.has(paneId)) {
+      const next = new Set(dirtyTabs);
+      next.delete(paneId);
+      dirtyTabs = next;
+    }
+
+    const layout = removePane(tab.layout, paneId);
+    if (layout === null) {
+      const remaining = tabs.filter((t) => t.id !== tab.id);
+      tabs = remaining;
+      if (activeTabId === tab.id && remaining.length > 0) activeTabId = remaining[remaining.length - 1].id;
+      if (remaining.length === 0) handleDisconnect();
+      return;
+    }
+    let activePaneId = tab.activePaneId;
+    if (!findPane(layout, activePaneId)) activePaneId = panesOf(layout)[0].paneId;
+    tabs = tabs.map((t) => (t.id === tab.id ? { ...t, layout, activePaneId } : t));
+  }
+
+  async function handleCloseTab(tabId: string) {
+    const tab = tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    for (const p of panesOf(tab.layout)) {
+      closedPaneStack.push(p);
+      if (p.backend.kind !== "editor") {
+        await closeShell(p.paneId).catch(() => {});
+      } else if (dirtyTabs.has(p.paneId)) {
+        const next = new Set(dirtyTabs);
+        next.delete(p.paneId);
+        dirtyTabs = next;
+      }
+    }
+    const next = tabs.filter((t) => t.id !== tabId);
+    if (tabId === activeTabId && next.length > 0) activeTabId = next[next.length - 1].id;
+    tabs = next;
+    if (next.length === 0) handleDisconnect();
   }
 
   function handleReorderTabs(fromIndex: number, toIndex: number) {
@@ -218,72 +350,13 @@
     tabs = next;
   }
 
-  // "+" button: clone the active tab's connection type
-  async function handleNewTab() {
-    const tab = activeTab;
-    if (!tab) return;
-
-    if (tab.backend.kind === "local") {
-      await createLocalTab(tab.backend.shellType);
-      return;
-    }
-
-    // ssh tab clones directly; an editor tab has no PTY so we drop a shell on
-    // the same host by borrowing a sibling ssh tab's profile
-    const sessionId = tab.backend.sessionId;
-    const sib =
-      tab.backend.kind === "ssh"
-        ? tab
-        : tabs.find((t) => t.backend.kind === "ssh" && t.backend.sessionId === sessionId);
-    if (!sib || sib.backend.kind !== "ssh") return;
-
-    const { profileId, profileName } = sib.backend;
-    try {
-      const channelId = await openShell(sessionId, 80, 24);
-      tabCount += 1;
-      const newTab: TerminalTab = {
-        channelId,
-        title: `${profileName} ${tabCount}`,
-        backend: { kind: "ssh", sessionId, profileId, profileName },
-      };
-      tabs = [...tabs, newTab];
-      activeTabId = channelId;
-    } catch (e) {
-      console.error("failed to open shell:", e);
-    }
-  }
-
-  async function handleCloseTab(channelId: string) {
-    // save to closed stack for reopen (ctrl+shift+t)
-    const closing = tabs.find((t) => t.channelId === channelId);
-    if (closing) closedTabStack.push(closing);
-
-    // editor tabs have no PTY behind them, nothing to tear down on the backend
-    if (closing?.backend.kind !== "editor") {
-      await closeShell(channelId).catch(() => {});
-    } else if (dirtyTabs.has(channelId)) {
-      const nextDirty = new Set(dirtyTabs);
-      nextDirty.delete(channelId);
-      dirtyTabs = nextDirty;
-    }
-    const next = tabs.filter((t) => t.channelId !== channelId);
-    if (channelId === activeTabId && next.length > 0) {
-      activeTabId = next[next.length - 1].channelId;
-    }
-    tabs = next;
-    // if no tabs left, disconnect everything
-    if (next.length === 0) handleDisconnect();
-  }
-
   // windows shells set the title to full exe paths and command lines -
   // extract just the program name like windows terminal does
   function cleanLocalTitle(raw: string): string {
     let name = raw;
-    // "C:\...\powershell.exe" -> extract basename
     if (/^[a-zA-Z]:\\/.test(name)) {
       name = name.split(/[/\\]/).pop() || name;
     } else {
-      // "npm exec @playwright/mcp@latest" -> first token
       name = name.split(/\s+/)[0];
       if (name.includes("\\") || name.includes("/")) {
         name = name.split(/[/\\]/).pop() || name;
@@ -292,39 +365,51 @@
     return name.replace(/\.(exe|cmd|bat|com)$/i, "");
   }
 
-  function handleTabTitleChange(channelId: string, title: string) {
-    const applyTitle = (cleaned: string) => {
-      tabs = tabs.map((t) => (t.channelId === channelId ? { ...t, title: cleaned } : t));
-    };
+  function updatePaneTitle(paneId: string, title: string) {
+    tabs = tabs.map((t) =>
+      panesOf(t.layout).some((p) => p.paneId === paneId)
+        ? { ...t, layout: mapPanes(t.layout, (p) => (p.paneId === paneId ? { ...p, title } : p)) }
+        : t,
+    );
+  }
 
-    // ssh tabs: pass through immediately, shells handle titles well
-    const tab = tabs.find((t) => t.channelId === channelId);
-    if (!tab || tab.backend.kind !== "local") {
-      applyTitle(title);
+  function handlePaneTitleChange(paneId: string, title: string) {
+    const pane = allPanes().find((p) => p.paneId === paneId);
+    // ssh shells handle titles well, pass through; local titles get cleaned + throttled
+    if (!pane || pane.backend.kind !== "local") {
+      updatePaneTitle(paneId, title);
       return;
     }
-
-    // local tabs: clean + throttle (200ms) to dodge flicker from rapid subprocess chains
     const cleaned = cleanLocalTitle(title);
-    const existing = titleTimers.get(channelId);
+    const existing = titleTimers.get(paneId);
     if (existing) clearTimeout(existing);
     titleTimers.set(
-      channelId,
+      paneId,
       setTimeout(() => {
-        titleTimers.delete(channelId);
-        applyTitle(cleaned);
+        titleTimers.delete(paneId);
+        updatePaneTitle(paneId, cleaned);
       }, 200),
     );
   }
 
+  // editor panel tells us when its buffer diverges - tracked off to the side so the
+  // tab strip can show a dot without disturbing the editor's DOM
+  function setEditorDirty(paneId: string, dirty: boolean) {
+    if (dirtyTabs.has(paneId) === dirty) return;
+    const next = new Set(dirtyTabs);
+    if (dirty) next.add(paneId);
+    else next.delete(paneId);
+    dirtyTabs = next;
+  }
+
   async function handleDisconnect() {
-    for (const tab of tabs) {
-      await closeShell(tab.channelId).catch(() => {});
+    for (const p of allPanes()) {
+      await closeShell(p.paneId).catch(() => {});
     }
     const sshSessionIds = new Set(
-      tabs
-        .filter((t) => t.backend.kind === "ssh")
-        .map((t) => (t.backend as Extract<TabBackend, { kind: "ssh" }>).sessionId),
+      allPanes()
+        .filter((p) => p.backend.kind === "ssh")
+        .map((p) => (p.backend as Extract<TabBackend, { kind: "ssh" }>).sessionId),
     );
     for (const sid of sshSessionIds) {
       await disconnectSsh(sid).catch(() => {});
@@ -339,43 +424,51 @@
     if (!sid) return;
     reconnecting = true;
     try {
-      const sshTab = tabs.find(
-        (t) => t.backend.kind === "ssh" && t.backend.sessionId === sid,
-      );
-      if (!sshTab || sshTab.backend.kind !== "ssh") return;
+      const sshPane = allPanes().find((p) => p.backend.kind === "ssh" && p.backend.sessionId === sid);
+      if (!sshPane || sshPane.backend.kind !== "ssh") return;
 
-      const result = await openSshShell(sshTab.backend.profileId, 80, 24);
+      const result = await openSshShell(sshPane.backend.profileId, 80, 24);
 
-      // clear lost status for old session
       const cleared = new Set(lostSessions);
       cleared.delete(sid);
       lostSessions = cleared;
 
-      // remove dead tabs for the old session, add a fresh one
-      tabCount += 1;
-      const newTab: TerminalTab = {
-        channelId: result.channel_id,
-        title: `${sshTab.backend.profileName} ${tabCount}`,
-        backend: {
-          kind: "ssh",
-          sessionId: result.session_id,
-          profileId: sshTab.backend.profileId,
-          profileName: sshTab.backend.profileName,
-        },
-      };
-      // drop the dead shells, but editor tabs survive - re-point them at the fresh
-      // session so the next save/reload rides the live link instead of the corpse.
-      // sessionId is read at call-time inside the editor, not in an effect, so swapping
-      // it here won't re-fetch or stomp unsaved edits.
-      const survivors = tabs
-        .filter((t) => !(t.backend.kind === "ssh" && t.backend.sessionId === sid))
-        .map((t) =>
-          t.backend.kind === "editor" && t.backend.sessionId === sid
-            ? { ...t, backend: { ...t.backend, sessionId: result.session_id } }
-            : t,
+      // re-point editor panes onto the fresh session (they survive - their sessionId is
+      // read at call time inside the editor, so swapping it won't re-fetch or stomp
+      // unsaved edits), then drop the dead ssh panes. tabs that empty out are removed.
+      const rebuilt: Tab[] = [];
+      for (const t of tabs) {
+        let layout = mapPanes(t.layout, (p) =>
+          p.backend.kind === "editor" && p.backend.sessionId === sid
+            ? { ...p, backend: { ...p.backend, sessionId: result.session_id } }
+            : p,
         );
-      tabs = [...survivors, newTab];
-      activeTabId = result.channel_id;
+        let surviving = layout;
+        for (const p of panesOf(layout)) {
+          if (p.backend.kind === "ssh" && p.backend.sessionId === sid) {
+            const pruned = removePane(surviving, p.paneId);
+            if (pruned === null) {
+              surviving = null as never;
+              break;
+            }
+            surviving = pruned;
+          }
+        }
+        if (surviving == null) continue;
+        let activePaneId = t.activePaneId;
+        if (!findPane(surviving, activePaneId)) activePaneId = panesOf(surviving)[0].paneId;
+        rebuilt.push({ ...t, layout: surviving, activePaneId });
+      }
+
+      tabCount += 1;
+      const freshPane: Pane = {
+        paneId: result.channel_id,
+        title: `${sshPane.backend.profileName} ${tabCount}`,
+        backend: { kind: "ssh", sessionId: result.session_id, profileId: sshPane.backend.profileId, profileName: sshPane.backend.profileName },
+      };
+      const freshTab: Tab = { id: `tab:${crypto.randomUUID()}`, layout: leafOf(freshPane), activePaneId: freshPane.paneId };
+      tabs = [...rebuilt, freshTab];
+      activeTabId = freshTab.id;
     } catch (e) {
       console.error("reconnect failed:", e);
     } finally {
@@ -384,46 +477,107 @@
   }
 
   async function handleReopenTab() {
-    const last = closedTabStack.pop();
+    const last = closedPaneStack.pop();
     if (!last) return;
     if (last.backend.kind === "ssh") {
       await createSshTabFromProfile(last.backend.profileId);
     } else if (last.backend.kind === "editor") {
-      openEditorTab(last.backend.sessionId, last.backend.path);
+      openEditorTab(last.backend.sessionId, last.backend.path, last.backend.profileId);
     } else {
       await createLocalTab(last.backend.shellType);
     }
   }
 
   function nextTab() {
-    const idx = tabs.findIndex((t) => t.channelId === activeTabId);
-    if (idx >= 0 && tabs.length > 1) activeTabId = tabs[(idx + 1) % tabs.length].channelId;
+    const idx = tabs.findIndex((t) => t.id === activeTabId);
+    if (idx >= 0 && tabs.length > 1) activeTabId = tabs[(idx + 1) % tabs.length].id;
   }
 
   function prevTab() {
-    const idx = tabs.findIndex((t) => t.channelId === activeTabId);
-    if (idx >= 0 && tabs.length > 1) activeTabId = tabs[(idx - 1 + tabs.length) % tabs.length].channelId;
+    const idx = tabs.findIndex((t) => t.id === activeTabId);
+    if (idx >= 0 && tabs.length > 1) activeTabId = tabs[(idx - 1 + tabs.length) % tabs.length].id;
+  }
+
+  function paneCount(tab: Tab): number {
+    return panesOf(tab.layout).length;
   }
 
   // the whole bridge in one list. derived off live state so a lost link flips
   // "reconnect" on, a new profile shows up as its own jump-to op, etc. the palette
   // reads this; the key dispatcher matches chords against it. one source, two doors.
   function buildCommands(): Command[] {
+    const multiPane = activeTab ? paneCount(activeTab) > 1 : false;
     const list: Command[] = [
-      { id: "tab.new", title: "New Tab", group: "TABS", keywords: "open create terminal split", run: handleNewTab },
+      { id: "tab.new", title: "New Tab", group: "TABS", keywords: "open create terminal", run: handleNewTab },
       {
-        id: "tab.close",
-        title: "Close Tab",
-        group: "TABS",
-        keywords: "kill quit",
+        id: "pane.split.v",
+        title: "Split Right",
+        group: "PANES",
+        keywords: "split pane vertical side",
+        chord: "Alt ⇧ =",
+        enabled: activePane != null,
+        match: (e) => e.altKey && e.shiftKey && e.code === "Equal",
+        run: () => splitActivePane("v"),
+      },
+      {
+        id: "pane.split.h",
+        title: "Split Down",
+        group: "PANES",
+        keywords: "split pane horizontal stack",
+        chord: "Alt ⇧ -",
+        enabled: activePane != null,
+        match: (e) => e.altKey && e.shiftKey && e.code === "Minus",
+        run: () => splitActivePane("h"),
+      },
+      {
+        id: "pane.close",
+        title: multiPane ? "Close Pane" : "Close Tab",
+        group: "PANES",
+        keywords: "kill quit pane tab",
         chord: "Ctrl ⇧ W",
-        enabled: activeTabId != null,
+        enabled: activeTab?.activePaneId != null,
         match: (e) => e.ctrlKey && e.shiftKey && e.code === "KeyW",
-        run: () => { if (activeTabId) handleCloseTab(activeTabId); },
+        run: () => { if (activeTab) closePane(activeTab.activePaneId); },
+      },
+      {
+        id: "pane.focus.left",
+        title: "Focus Pane Left",
+        group: "PANES",
+        chord: "Alt ◄",
+        enabled: multiPane,
+        match: (e) => e.altKey && !e.ctrlKey && !e.shiftKey && e.code === "ArrowLeft",
+        run: () => focusDir("left"),
+      },
+      {
+        id: "pane.focus.right",
+        title: "Focus Pane Right",
+        group: "PANES",
+        chord: "Alt ►",
+        enabled: multiPane,
+        match: (e) => e.altKey && !e.ctrlKey && !e.shiftKey && e.code === "ArrowRight",
+        run: () => focusDir("right"),
+      },
+      {
+        id: "pane.focus.up",
+        title: "Focus Pane Up",
+        group: "PANES",
+        chord: "Alt ▲",
+        enabled: multiPane,
+        match: (e) => e.altKey && !e.ctrlKey && !e.shiftKey && e.code === "ArrowUp",
+        run: () => focusDir("up"),
+      },
+      {
+        id: "pane.focus.down",
+        title: "Focus Pane Down",
+        group: "PANES",
+        chord: "Alt ▼",
+        enabled: multiPane,
+        match: (e) => e.altKey && !e.ctrlKey && !e.shiftKey && e.code === "ArrowDown",
+        run: () => focusDir("down"),
       },
       {
         id: "tab.reopen",
-        title: "Reopen Closed Tab",
+        title: "Reopen Closed Pane",
         group: "TABS",
         keywords: "undo restore",
         chord: "Ctrl ⇧ T",
@@ -510,16 +664,17 @@
     }
 
     tabs.forEach((t, i) => {
+      const head = findPane(t.layout, t.activePaneId);
       list.push({
-        id: `goto.${t.channelId}`,
-        title: t.title,
+        id: `goto.${t.id}`,
+        title: head?.title ?? "Tab",
         group: "GO TO TAB",
         detail: String(i + 1),
         keywords: "switch jump focus",
         chord: i < 9 ? `Ctrl ${i + 1}` : undefined,
-        enabled: t.channelId !== activeTabId,
+        enabled: t.id !== activeTabId,
         match: i < 9 ? (e) => e.ctrlKey && !e.shiftKey && !e.altKey && e.code === `Digit${i + 1}` : undefined,
-        run: () => (activeTabId = t.channelId),
+        run: () => (activeTabId = t.id),
       });
     });
 
@@ -530,13 +685,9 @@
     commands.set(buildCommands());
   });
 
-  function profileLabel(profileId: string): string {
-    const p = profiles.find((p) => p.id === profileId);
-    return p?.name || p?.host || "SSH";
-  }
-
   // replay last run's tab set. sessions are stood back up per-profile (reused across
   // tabs on the same host); a profile that can't auth silently just drops its tabs.
+  // splits aren't persisted yet (slice 0.20.2), so this rebuilds flat single-pane tabs.
   async function restoreSession(saved: SavedSession) {
     profiles = await getProfiles().catch(() => []);
     const sessionFor = new Map<string, string>();
@@ -554,7 +705,14 @@
       }
     };
 
-    let activeChannel: string | null = null;
+    const built: Tab[] = [];
+    let activeId: string | null = null;
+    const push = (pane: Pane, wantActive: boolean) => {
+      const tab: Tab = { id: `tab:${crypto.randomUUID()}`, layout: leafOf(pane), activePaneId: pane.paneId };
+      built.push(tab);
+      if (wantActive) activeId = tab.id;
+    };
+
     for (let i = 0; i < saved.tabs.length; i++) {
       const st = saved.tabs[i];
       const wantActive = i === saved.activeIndex;
@@ -562,35 +720,33 @@
         if (st.kind === "local") {
           const channelId = await openLocalShell(st.shellType, 80, 24);
           tabCount += 1;
-          tabs = [...tabs, { channelId, title: `${st.shellType} ${tabCount}`, backend: { kind: "local", shellType: st.shellType } }];
-          if (wantActive) activeChannel = channelId;
+          push({ paneId: channelId, title: `${st.shellType} ${tabCount}`, backend: { kind: "local", shellType: st.shellType } }, wantActive);
         } else if (st.kind === "ssh") {
           const sid = await ensure(st.profileId);
           if (!sid) continue;
           const channelId = await openShell(sid, 80, 24);
           tabCount += 1;
           const name = profileLabel(st.profileId);
-          tabs = [...tabs, { channelId, title: `${name} ${tabCount}`, backend: { kind: "ssh", sessionId: sid, profileId: st.profileId, profileName: name } }];
-          if (wantActive) activeChannel = channelId;
+          push({ paneId: channelId, title: `${name} ${tabCount}`, backend: { kind: "ssh", sessionId: sid, profileId: st.profileId, profileName: name } }, wantActive);
         } else {
           const sid = await ensure(st.profileId);
           if (!sid) continue;
           ensureEditorPanel();
-          const channelId = `editor:${crypto.randomUUID()}`;
-          tabs = [...tabs, { channelId, title: basename(st.path), backend: { kind: "editor", sessionId: sid, profileId: st.profileId, path: st.path } }];
-          if (wantActive) activeChannel = channelId;
+          const paneId = `editor:${crypto.randomUUID()}`;
+          push({ paneId, title: basename(st.path), backend: { kind: "editor", sessionId: sid, profileId: st.profileId, path: st.path } }, wantActive);
         }
       } catch (e) {
         console.error("restore: tab failed", st, e);
       }
     }
 
+    tabs = built;
     // every host fell over (nothing silently authable) - back to the connect screen
     if (tabs.length === 0) {
       onDisconnected();
       return;
     }
-    activeTabId = activeChannel ?? tabs[0].channelId;
+    activeTabId = activeId ?? tabs[0].id;
   }
 
   function toSavedTab(b: TabBackend): SavedTab | null {
@@ -601,20 +757,24 @@
   }
 
   // stash the live tab set (debounced) so next launch's RESUME has something to offer.
+  // splits degrade to their panes as separate flat tabs (slice 0.20.2 teaches the tree).
   // empty sets are skipped on purpose: a clean disconnect should leave the last real
   // session sitting there to resume, not wipe it.
   $effect(() => {
     const snapshot = tabs;
     const activeId = activeTabId;
     if (snapshot.length === 0) return;
+    const activePaneId = snapshot.find((t) => t.id === activeId)?.activePaneId ?? null;
     const timer = setTimeout(() => {
       const out: SavedTab[] = [];
       let activeIndex = 0;
       for (const t of snapshot) {
-        const st = toSavedTab(t.backend);
-        if (!st) continue;
-        if (t.channelId === activeId) activeIndex = out.length;
-        out.push(st);
+        for (const p of panesOf(t.layout)) {
+          const st = toSavedTab(p.backend);
+          if (!st) continue;
+          if (t.id === activeId && p.paneId === activePaneId) activeIndex = out.length;
+          out.push(st);
+        }
       }
       if (out.length > 0) saveSession({ tabs: out, activeIndex }).catch(() => {});
     }, 600);
@@ -646,10 +806,9 @@
   $effect(() => {
     const sshSessionIds = new Set(
       tabs
-        .filter((t): t is TerminalTab & { backend: Extract<TabBackend, { kind: "ssh" }> } =>
-          t.backend.kind === "ssh",
-        )
-        .map((t) => t.backend.sessionId),
+        .flatMap((t) => panesOf(t.layout))
+        .filter((p) => p.backend.kind === "ssh")
+        .map((p) => (p.backend as Extract<TabBackend, { kind: "ssh" }>).sessionId),
     );
 
     for (const sid of sshSessionIds) {
@@ -670,13 +829,14 @@
     }
   });
 
-  // stats polling: follows the active tab's backend. keyed on activeTabId + lostSessions
-  // only (not tabs), so a title change mid-session doesn't reset the readout.
+  // stats polling: follows the active pane's backend. keyed on the active pane id +
+  // lostSessions only (not the whole tree), so a title change mid-session doesn't reset
+  // the readout, but a pane hop or tab switch does.
   $effect(() => {
-    activeTabId;
+    activePane?.paneId;
     lostSessions;
-    const tab = untrack(() => activeTab);
-    if (!tab) return;
+    const pane = untrack(() => activePane);
+    if (!pane) return;
 
     const pollStats = async () => {
       if (statsInFlight) return;
@@ -684,10 +844,10 @@
       try {
         let sysStats: SystemStats;
         if (
-          (tab.backend.kind === "ssh" || tab.backend.kind === "editor") &&
-          !lostSessions.has(tab.backend.sessionId)
+          (pane.backend.kind === "ssh" || pane.backend.kind === "editor") &&
+          !lostSessions.has(pane.backend.sessionId)
         ) {
-          sysStats = await fetchSystemStats(tab.backend.sessionId);
+          sysStats = await fetchSystemStats(pane.backend.sessionId);
         } else {
           sysStats = await fetchLocalStats();
         }
@@ -700,7 +860,6 @@
       }
     };
 
-    // reset stats when switching tabs so stale data doesn't linger
     stats = null;
     prevStats = null;
     pollStats();
@@ -743,51 +902,65 @@
       />
     {/if}
     <div class="terminal-area">
-    {#if TerminalPanel}
-      {#each tabs as tab (tab.channelId)}
-        {#if tab.backend.kind === "editor"}
+      {#snippet paneLeaf(pane: Pane, visible: boolean, focused: boolean)}
+        {#if pane.backend.kind === "editor"}
           {#if EditorPanel}
             <EditorPanel
-              channelId={tab.channelId}
-              sessionId={tab.backend.sessionId}
-              path={tab.backend.path}
-              active={tab.channelId === activeTabId}
+              channelId={pane.paneId}
+              sessionId={pane.backend.sessionId}
+              path={pane.backend.path}
+              {visible}
+              {focused}
               onDirtyChange={setEditorDirty}
             />
           {:else}
             <div class="terminal-loading">OPENING EDITOR...</div>
           {/if}
-        {:else}
+        {:else if TerminalPanel}
           <TerminalPanel
-            channelId={tab.channelId}
-            active={tab.channelId === activeTabId}
-            searchVisible={searchVisible && tab.channelId === activeTabId}
+            channelId={pane.paneId}
+            {visible}
+            {focused}
+            searchVisible={searchVisible && focused}
             onSearchToggle={() => (searchVisible = !searchVisible)}
-            onClosed={() => handleCloseTab(tab.channelId)}
-            onTitleChange={(title) => handleTabTitleChange(tab.channelId, title)}
+            onClosed={() => closePane(pane.paneId)}
+            onTitleChange={(title) => handlePaneTitleChange(pane.paneId, title)}
           />
+        {:else}
+          <div class="terminal-loading">ALLOCATING PTY...</div>
         {/if}
+      {/snippet}
+
+      {#each tabs as tab (tab.id)}
+        <div class="tab-layer" class:tab-layer-hidden={tab.id !== activeTabId}>
+          <PaneTree
+            node={tab.layout}
+            activePaneId={tab.activePaneId}
+            tabVisible={tab.id === activeTabId}
+            onFocusPane={(pid) => focusPane(tab.id, pid)}
+            onSetRatio={(sid, r) => setTabRatio(tab.id, sid, r)}
+            leaf={paneLeaf}
+          />
+        </div>
       {/each}
-    {:else}
-      <div class="terminal-loading">ALLOCATING PTY...</div>
-    {/if}
-    {#if connectionStatus === "lost"}
-      <div class="link-lost-overlay">
-        <div class="link-lost-panel">
-          <div class="link-lost-icon">⚠</div>
-          <div class="link-lost-title">LINK LOST</div>
-          <div class="link-lost-sub">Connection to target terminated unexpectedly</div>
-          <div class="link-lost-actions">
-            <button class="btn btn-primary" onclick={handleReconnect} disabled={reconnecting}>
-              {reconnecting ? "RECONNECTING..." : "RECONNECT"}
-            </button>
-            <button class="btn btn-danger" onclick={handleDisconnect}>
-              DISCONNECT
-            </button>
+
+      {#if connectionStatus === "lost"}
+        <div class="link-lost-overlay">
+          <div class="link-lost-panel">
+            <div class="link-lost-icon">⚠</div>
+            <div class="link-lost-title">LINK LOST</div>
+            <div class="link-lost-sub">Connection to target terminated unexpectedly</div>
+            <div class="link-lost-actions">
+              <button class="btn btn-primary" onclick={handleReconnect} disabled={reconnecting}>
+                {reconnecting ? "RECONNECTING..." : "RECONNECT"}
+              </button>
+              <button class="btn btn-danger" onclick={handleDisconnect}>
+                DISCONNECT
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    {/if}
+      {/if}
     </div>
   </div>
   <TransferTray />
@@ -819,6 +992,19 @@
     min-width: 0;
     min-height: 0;
     position: relative;
+  }
+
+  /* one layer per tab, stacked. hidden tabs use visibility (not display:none) so their
+     panes keep real geometry - a terminal stays correctly fitted while offscreen and
+     doesn't have to reflow on every tab switch. */
+  .tab-layer {
+    position: absolute;
+    inset: 0;
+  }
+
+  .tab-layer-hidden {
+    visibility: hidden;
+    pointer-events: none;
   }
 
   .terminal-loading {
