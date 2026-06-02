@@ -16,6 +16,8 @@
     localShells: LocalShellInfo[];
     onReorderTabs: (fromIndex: number, toIndex: number) => void;
     onOpenFile: (sessionId: string, path: string) => void;
+    onTearOff: (tabId: string) => void;
+    onTabDragStart: (tabId: string) => void;
   }
 
   let {
@@ -31,6 +33,8 @@
     localShells,
     onReorderTabs,
     onOpenFile,
+    onTearOff,
+    onTabDragStart,
   }: Props = $props();
 
   interface ContextMenu {
@@ -90,6 +94,7 @@
   // -- drag reorder --
   function handleDragStart(e: DragEvent, index: number) {
     dragIndex = index;
+    onTabDragStart(tabs[index].id);
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = "move";
       // firefox needs this
@@ -306,6 +311,18 @@
       {#if tabs.length > 1}
         <button class="tab-context-item" onclick={contextCloseOthers}>
           Close Others
+        </button>
+      {/if}
+      {#if tabs.length > 1}
+        <div class="tab-context-divider"></div>
+        <button
+          class="tab-context-item"
+          onclick={() => {
+            onTearOff(contextMenu!.tabId);
+            contextMenu = null;
+          }}
+        >
+          Open in New Window
         </button>
       {/if}
       {#if tabs.findIndex((t) => t.id === contextMenu!.tabId) < tabs.length - 1}
@@ -646,5 +663,11 @@
   .tab-context-item:hover {
     color: var(--accent-primary);
     background: rgba(var(--accent-rgb), 0.05);
+  }
+
+  .tab-context-divider {
+    height: 1px;
+    background: var(--border-subtle);
+    margin: 0.25rem 0;
   }
 </style>

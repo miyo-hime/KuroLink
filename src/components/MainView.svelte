@@ -19,8 +19,10 @@
     getProfiles,
     saveSession,
     onSessionError,
+    tearOffTab,
   } from "../lib/ipc";
   import type { UnlistenFn } from "@tauri-apps/api/event";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import TopBar from "./TopBar.svelte";
   import TabBar from "./TabBar.svelte";
   import StatusBar from "./StatusBar.svelte";
@@ -35,12 +37,17 @@
     initialProfile: ConnectionProfile | null;
     initialLocalShell: LocalShellId | null;
     initialRestore: SavedSession | null;
+    initialAdopt: Tab | null;
     onDisconnected: () => void;
   }
 
-  let { initialSessionId, initialProfile, initialLocalShell, initialRestore, onDisconnected }: Props = $props();
+  let { initialSessionId, initialProfile, initialLocalShell, initialRestore, initialAdopt, onDisconnected }: Props = $props();
 
   const STATS_POLL_MS = 10_000;
+
+  // torn-off windows are secondary: they don't own persisted session/geometry (one
+  // shared config file, main wins), and they close their own shells on exit.
+  const isMainWindow = getCurrentWindow().label === "main";
 
   // ghostty chunk is heavy (inlined wasm), so the panel stays its own lazy import -
   // the connect screen never pays for it
@@ -383,6 +390,53 @@
     tabs = next;
   }
 
+  // tear-off: hand a whole tab to a fresh window. the panes stay live (their PTYs are
+  // process-global; the new window just re-subscribes by paneId), so this routes around
+  // handleCloseTab the same way graftTab does - ferry the tree, don't kill the shells.
+  // gated to >1 tab: tearing off a lone tab would just empty this window for nothing.
+  async function tearOff(tabId: string, screenX?: number, screenY?: number) {
+    if (tabs.length <= 1) return;
+    const tab = tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    const win = getCurrentWindow();
+    try {
+      const size = await win.innerSize();
+      let x: number;
+      let y: number;
+      if (screenX != null && screenY != null) {
+        // drop point is in css px; the rust side wants physical
+        const dpr = window.devicePixelRatio || 1;
+        x = Math.round(screenX * dpr) - 80;
+        y = Math.round(screenY * dpr) - 16;
+      } else {
+        const pos = await win.outerPosition();
+        x = pos.x + 48;
+        y = pos.y + 48;
+      }
+      await tearOffTab(tab, x, y, size.width, size.height);
+    } catch (e) {
+      console.error("tear-off failed:", e);
+      return;
+    }
+    const next = tabs.filter((t) => t.id !== tabId);
+    if (tabId === activeTabId) activeTabId = next[next.length - 1].id;
+    tabs = next;
+  }
+
+  // drag-out plumbing: TabBar tells us a tab drag started (so the window-level dragend
+  // can tear it off if it lands outside our bounds). the rect is the window's outer box
+  // in physical px, grabbed at dragstart so dragend stays synchronous.
+  let draggingTabId: string | null = null;
+  let dragWindowRect: { x: number; y: number; w: number; h: number } | null = null;
+
+  function onTabDragStart(tabId: string) {
+    draggingTabId = tabId;
+    const win = getCurrentWindow();
+    Promise.all([win.outerPosition(), win.outerSize()])
+      .then(([p, s]) => (dragWindowRect = { x: p.x, y: p.y, w: s.width, h: s.height }))
+      .catch(() => (dragWindowRect = null));
+  }
+
   // drop a dragged tab onto a pane: graft the dragged tab's whole layout in beside that
   // pane. a re-parent, not a teardown - the panes stay live, so we route around
   // handleCloseTab (which would kill the PTYs) and just pull the tree out by hand.
@@ -397,6 +451,7 @@
       .map((t) => (t.id === target.id ? { ...t, layout: graftAt(t.layout, targetPaneId, side, incoming), activePaneId: focus } : t));
     activeTabId = target.id;
     paneDropHint = null;
+    draggingTabId = null;
   }
 
   // windows shells set the title to full exe paths and command lines -
@@ -841,7 +896,8 @@
   $effect(() => {
     const snapshot = tabs;
     const activeId = activeTabId;
-    if (snapshot.length === 0) return;
+    // only main persists - a torn window writing the shared blob would clobber it
+    if (!isMainWindow || snapshot.length === 0) return;
     const timer = setTimeout(() => {
       const out: SavedTabEntry[] = [];
       let activeIndex = 0;
@@ -863,7 +919,12 @@
     transfers.init();
     import("./TerminalPanel.svelte").then((m) => (TerminalPanel = m.default));
 
-    if (initialRestore) {
+    if (initialAdopt) {
+      // a torn-off tab arrives whole, panes already pointing at live channels - just drop it in
+      if (panesOf(initialAdopt.layout).some((p) => p.backend.kind === "editor")) ensureEditorPanel();
+      tabs = [initialAdopt];
+      activeTabId = initialAdopt.id;
+    } else if (initialRestore) {
       restoreSession(initialRestore);
     } else if (initialLocalShell) {
       createLocalTab(initialLocalShell);
@@ -874,12 +935,42 @@
     detectLocalShells().then((s) => (localShells = s)).catch(() => {});
 
     const detachKeys = attachCommandKeys();
-    const clearHint = () => (paneDropHint = null);
-    window.addEventListener("dragend", clearHint);
+    // window-level dragend does double duty: clear a stranded split hint, and decide
+    // whether a tab drag that ended outside our bounds means "tear off to a new window".
+    const onDragEnd = (e: DragEvent) => {
+      paneDropHint = null;
+      const tabId = draggingTabId;
+      const rect = dragWindowRect;
+      draggingTabId = null;
+      dragWindowRect = null;
+      if (!tabId || !rect || tabs.length <= 1) return;
+      const dpr = window.devicePixelRatio || 1;
+      const px = e.screenX * dpr;
+      const py = e.screenY * dpr;
+      const outside = px < rect.x || px > rect.x + rect.w || py < rect.y || py > rect.y + rect.h;
+      if (outside) tearOff(tabId, e.screenX, e.screenY);
+    };
+    window.addEventListener("dragend", onDragEnd);
+
+    // a secondary window cleans up after itself: the main process keeps running, so its
+    // shells would leak if we didn't close them as the window goes.
+    let detachClose: (() => void) | undefined;
+    if (!isMainWindow) {
+      getCurrentWindow()
+        .onCloseRequested(async () => {
+          for (const p of allPanes()) {
+            if (p.backend.kind === "ssh" || p.backend.kind === "local") await closeShell(p.paneId).catch(() => {});
+          }
+        })
+        .then((fn) => (detachClose = fn))
+        .catch(() => {});
+    }
+
     return () => {
       detachKeys();
       commands.clear();
-      window.removeEventListener("dragend", clearHint);
+      window.removeEventListener("dragend", onDragEnd);
+      detachClose?.();
     };
   });
 
@@ -974,6 +1065,8 @@
     {localShells}
     onReorderTabs={handleReorderTabs}
     onOpenFile={openEditorTab}
+    onTearOff={(id) => tearOff(id)}
+    {onTabDragStart}
   />
   <div class="work-area">
     {#if filesVisible && activeSessionId && !isActiveLost}

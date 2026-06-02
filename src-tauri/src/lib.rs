@@ -48,6 +48,8 @@ pub fn run() {
             commands::fetch_local_stats,
             commands::get_active_sessions,
             commands::get_launch_path,
+            commands::tear_off_tab,
+            commands::claim_handoff,
             commands::sftp_list_dir,
             commands::sftp_realpath,
             commands::sftp_read_file,
@@ -71,34 +73,8 @@ pub fn run() {
             // frosts over it. acrylic blurs everything behind (windows + wallpaper).
             #[cfg(target_os = "windows")]
             if let Some(win) = app.get_webview_window("main") {
-                use window_vibrancy::apply_acrylic;
-                let _ = apply_acrylic(&win, Some((6, 6, 14, 180)));
-
-                // drop the 1px dwm border AND the win11 rounded corners - a cockpit
-                // has hard edges. now that decorations are off these are the last two
-                // bits of os chrome bleeding into the borderless look.
+                chrome::apply_glass_chrome(&win);
                 if let Ok(hwnd) = win.hwnd() {
-                    use windows_sys::Win32::Graphics::Dwm::{
-                        DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE,
-                        DWMWCP_DONOTROUND,
-                    };
-                    let none_color: u32 = 0xFFFFFFFE;
-                    let corner_pref: u32 = DWMWCP_DONOTROUND as u32;
-                    unsafe {
-                        DwmSetWindowAttribute(
-                            hwnd.0 as _,
-                            DWMWA_BORDER_COLOR as u32,
-                            &none_color as *const u32 as *const _,
-                            std::mem::size_of::<u32>() as u32,
-                        );
-                        DwmSetWindowAttribute(
-                            hwnd.0 as _,
-                            DWMWA_WINDOW_CORNER_PREFERENCE as u32,
-                            &corner_pref as *const u32 as *const _,
-                            std::mem::size_of::<u32>() as u32,
-                        );
-                    }
-
                     chrome::init_snap_subclass(win.clone(), hwnd.0 as _);
                 }
             }
@@ -123,6 +99,12 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            // only the main window owns persisted geometry - torn-off windows are
+            // ephemeral, and they all share one config file (exe-relative), so letting
+            // a secondary window write window_state would just clobber main's.
+            if window.label() != "main" {
+                return;
+            }
             // save window state when the window is about to close
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 let maximized = window.is_maximized().unwrap_or(false);

@@ -858,6 +858,69 @@ pub async fn get_launch_path(state: State<'_, AppState>) -> Result<Option<String
     Ok(state.launch_path.lock().await.clone())
 }
 
+// window tear-off - spawn a sibling window and hand it a live tab.
+//
+// the whole trick is that the ssh/local backend is process-global: channels live in
+// AppState keyed by paneId, and the io bridge emits with app.emit (broadcast to every
+// webview). so a brand-new window mounts a panel on the same paneId and just picks up
+// the live stream - no channels move, nothing reconnects. we only ferry the tree.
+
+/// stash a live tab's layout and open a new window to adopt it. `layout` is the
+/// frontend-owned Tab json (panes still carrying their live paneIds/sessionIds); the
+/// new window pulls it back via claim_handoff on boot.
+#[tauri::command]
+pub async fn tear_off_tab(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    layout: serde_json::Value,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+) -> Result<String, String> {
+    use tauri::{WebviewUrl, WebviewWindowBuilder};
+
+    let label = format!("torn-{}", uuid::Uuid::new_v4());
+    state
+        .pending_handoffs
+        .lock()
+        .await
+        .insert(label.clone(), layout);
+
+    let window = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html".into()))
+        .title("KuroLink")
+        .inner_size(width as f64, height as f64)
+        .position(x as f64, y as f64)
+        .decorations(false)
+        .transparent(true)
+        // same as the main window's config: HTML5 drag needs the os drop handler off,
+        // or you can't drag a tab/file inside this window either.
+        .disable_drag_drop_handler()
+        .build();
+
+    match window {
+        Ok(win) => {
+            crate::chrome::apply_glass_chrome(&win);
+            Ok(label)
+        }
+        Err(e) => {
+            // don't leave a stranded payload if the window never came up
+            state.pending_handoffs.lock().await.remove(&label);
+            Err(format!("failed to spawn window: {e}"))
+        }
+    }
+}
+
+/// a freshly-spawned window asks for the tab it was born to hold. returns null for
+/// the main window (never in the map) so the same boot path is a no-op there.
+#[tauri::command]
+pub async fn claim_handoff(
+    state: State<'_, AppState>,
+    window: tauri::WebviewWindow,
+) -> Result<Option<serde_json::Value>, String> {
+    Ok(state.pending_handoffs.lock().await.remove(window.label()))
+}
+
 // sftp - rides the existing ssh session, one subsystem channel per session
 
 /// grab the session's sftp handle, opening the subsystem the first time.

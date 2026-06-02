@@ -13,6 +13,43 @@ pub fn set_max_button_rect(_x: i32, _y: i32, _w: i32, _h: i32) {
     }
 }
 
+/// the borderless-glass treatment: win11 acrylic + kill the dwm 1px border and the
+/// rounded corners. a cockpit has hard edges. shared by the main window and every
+/// torn-off one. the snap subclass is NOT in here on purpose - it's a singleton
+/// (one set of statics, one max-button rect) and the flyout's deferred anyway, so
+/// only the main window gets subclassed.
+#[cfg(target_os = "windows")]
+pub fn apply_glass_chrome(window: &tauri::WebviewWindow) {
+    use window_vibrancy::apply_acrylic;
+    use windows_sys::Win32::Graphics::Dwm::{
+        DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE,
+        DWMWCP_DONOTROUND,
+    };
+
+    let _ = apply_acrylic(window, Some((6, 6, 14, 180)));
+    if let Ok(hwnd) = window.hwnd() {
+        let none_color: u32 = 0xFFFFFFFE;
+        let corner_pref: u32 = DWMWCP_DONOTROUND as u32;
+        unsafe {
+            DwmSetWindowAttribute(
+                hwnd.0 as _,
+                DWMWA_BORDER_COLOR as u32,
+                &none_color as *const u32 as *const _,
+                std::mem::size_of::<u32>() as u32,
+            );
+            DwmSetWindowAttribute(
+                hwnd.0 as _,
+                DWMWA_WINDOW_CORNER_PREFERENCE as u32,
+                &corner_pref as *const u32 as *const _,
+                std::mem::size_of::<u32>() as u32,
+            );
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn apply_glass_chrome(_window: &tauri::WebviewWindow) {}
+
 #[cfg(target_os = "windows")]
 pub use win::init as init_snap_subclass;
 

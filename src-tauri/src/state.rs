@@ -63,6 +63,10 @@ pub struct AppState {
     pub local_disks: Mutex<Disks>,
     // live transfers, keyed by id -> "please stop" flag the streaming loop polls
     pub transfers: Mutex<HashMap<String, Arc<AtomicBool>>>,
+    // a tab in flight between windows: the spawning window stashes the live layout
+    // keyed by the new window's label, the new window claims it on boot. the panes
+    // stay live in the maps above the whole time - this is just the tree's address.
+    pub pending_handoffs: Mutex<HashMap<String, serde_json::Value>>,
 }
 
 impl AppState {
@@ -78,6 +82,7 @@ impl AppState {
             local_system: Mutex::new(System::new()),
             local_disks: Mutex::new(Disks::new_with_refreshed_list()),
             transfers: Mutex::new(HashMap::new()),
+            pending_handoffs: Mutex::new(HashMap::new()),
         }
     }
 

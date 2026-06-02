@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ConnectionProfile, HostStatus, SystemStats, AgentIdentityInfo, OpenSshShellResult, SessionInfo, LocalShellInfo, LocalShellId, SftpEntry, SavedSession } from "./types";
+import type { ConnectionProfile, HostStatus, SystemStats, AgentIdentityInfo, OpenSshShellResult, SessionInfo, LocalShellInfo, LocalShellId, SftpEntry, SavedSession, Tab } from "./types";
 import { normalizeSession } from "./savedSession";
 
 // -- Config --
@@ -144,6 +144,16 @@ export const getActiveSessions = () =>
 
 export const getLaunchPath = () =>
   invoke<string | null>("get_launch_path");
+
+// -- Window tear-off --
+
+// stash a live tab and spawn a window to adopt it. x/y/w/h are physical px.
+export const tearOffTab = (layout: Tab, x: number, y: number, width: number, height: number) =>
+  invoke<string>("tear_off_tab", { layout, x, y, width, height });
+
+// a freshly-spawned window asks for the tab it was born to hold (null on main)
+export const claimHandoff = () =>
+  invoke<Tab | null>("claim_handoff");
 
 // -- SFTP (rides the ssh session) --
 
