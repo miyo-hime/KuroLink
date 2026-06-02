@@ -6,7 +6,7 @@ An SSH client and terminal for people who think Windows Terminal is fine but wis
 
 [![Primary Repo](https://img.shields.io/badge/primary-Kurobox-purple?logo=forgejo&style=flat-square)](https://codex.kurobox.me/miyo-rin/KuroLink)
 [![GitHub Mirror](https://img.shields.io/badge/mirror-GitHub-gray?logo=github&style=flat-square)](https://github.com/miyo-hime/KuroLink)
-![Version](https://img.shields.io/badge/v0.18.0-orange?style=flat-square)
+![Version](https://img.shields.io/badge/v0.21.0-orange?style=flat-square)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)
 ![Built with Tauri](https://img.shields.io/badge/Tauri%202-24C8D8?logo=tauri&logoColor=white&style=flat-square)
 ![Svelte 5](https://img.shields.io/badge/Svelte%205-FF3E00?logo=svelte&logoColor=white&style=flat-square)
@@ -25,13 +25,15 @@ so: KuroLink. a terminal, an SFTP browser, and a real code editor in one small w
 
 **a terminal, local or remote**
 - local shells (PowerShell, CMD, WSL, Nu) and SSH sessions, side by side in tabs you can drag around
+- split any tab into panes - `Alt+Shift+=` / `-` to split, `Alt`+arrows to hop between them, or drag a tab straight onto a pane to graft it in WT-style. layouts come back when you do
 - the real Ghostty engine under the hood (compiled to wasm), so Nerd Fonts, emoji and CJK render properly instead of turning into question-mark soup
 - select-to-copy / right-click-paste, clickable links, find-in-buffer, font zoom, 10k scrollback
-- shortcuts: `Ctrl+Tab` to cycle, `Ctrl+1-9` to jump, `Ctrl+Shift+W` to close, `Ctrl+Shift+T` to reopen
+- a command palette (`Ctrl+Shift+Space`) for everything, plus the usual chords: `Ctrl+Tab` to cycle, `Ctrl+1-9` to jump, `Ctrl+Shift+W` to close, `Ctrl+Shift+T` to reopen
 
 **files, the part that replaced VSCode for us**
 - an SFTP file browser in a side panel - browse the remote box, rename, delete, make folders
 - open remote files in a proper editor right next to your terminals: syntax highlighting, multi-cursor, minimap, the works. `Ctrl+S` saves straight back over SSH
+- drag a file out of the browser onto a pane to open it split right there, or onto the tab strip for a new tab - drop it exactly where you want it
 - view images inline, preview SVGs live as you edit
 - drag-and-drop upload, file-picker upload, download - all with a progress tray you can cancel from
 
@@ -49,7 +51,7 @@ so: KuroLink. a terminal, an SFTP browser, and a real code editor in one small w
 
 **and the boring-but-nice basics**
 - a single portable exe, no installer, config saves right next to it (it's Tauri, not Electron, so it's megabytes, not a small country's worth of disk)
-- remembers your window size, position, and last connection
+- remembers your window size and position, and a RESUME button on the connect screen rebuilds last run's whole layout - every tab, split and open file - for any host that authenticates silently
 
 ## download
 

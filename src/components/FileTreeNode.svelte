@@ -91,6 +91,14 @@
     transfers.uploadFiles(sessionId, entry.path, [...files], expandReload);
   }
 
+  // drag a file out onto a pane (split) or the tab bar (new tab). dirs can't open in an
+  // editor, so they stay drag-inert and keep being upload targets.
+  function onRowDragStart(e: DragEvent) {
+    if (entry.is_dir || !e.dataTransfer) return;
+    e.dataTransfer.effectAllowed = "copy";
+    e.dataTransfer.setData("application/x-kurolink-file", JSON.stringify({ sessionId, path: entry.path }));
+  }
+
   function rowContextMenu(e: MouseEvent) {
     onContextMenu(e, {
       entry,
@@ -112,8 +120,10 @@
     class:just-created={isNew}
     class:drop-target={dropActive}
     style="padding-left: {depth * 14 + 8}px"
+    draggable={!entry.is_dir}
     onclick={onRowClick}
     oncontextmenu={rowContextMenu}
+    ondragstart={onRowDragStart}
     ondragover={onRowDragOver}
     ondragleave={onRowDragLeave}
     ondrop={onRowDrop}

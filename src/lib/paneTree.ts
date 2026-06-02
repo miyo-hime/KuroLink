@@ -30,7 +30,39 @@ export function mapPanes(node: PaneNode, fn: (p: Pane) => Pane): PaneNode {
   return a === node.a && b === node.b ? node : { ...node, a, b };
 }
 
-// before=true puts the new pane in the leading slot (a), so ratio is *its* share.
+export type GraftSide = "left" | "right" | "top" | "bottom";
+
+// graft a whole subtree beside the target leaf. ratio is the *grafted* subtree's share,
+// so it reads the same no matter which side it lands on. drag-to-split rides this; splitAt
+// is just the single-leaf case.
+export function graftAt(
+  node: PaneNode,
+  targetPaneId: string,
+  side: GraftSide,
+  subtree: PaneNode,
+  ratio = 0.5,
+): PaneNode {
+  if (node.kind === "leaf") {
+    if (node.pane.paneId !== targetPaneId) return node;
+    const dir = side === "left" || side === "right" ? "v" : "h";
+    const before = side === "left" || side === "top";
+    return {
+      kind: "split",
+      id: `split:${crypto.randomUUID()}`,
+      dir,
+      a: before ? subtree : node,
+      b: before ? node : subtree,
+      ratio: before ? ratio : 1 - ratio,
+    };
+  }
+  return {
+    ...node,
+    a: graftAt(node.a, targetPaneId, side, subtree, ratio),
+    b: graftAt(node.b, targetPaneId, side, subtree, ratio),
+  };
+}
+
+// before=true puts the new pane in the leading slot, so ratio is *its* share.
 export function splitAt(
   node: PaneNode,
   targetPaneId: string,
@@ -39,23 +71,8 @@ export function splitAt(
   ratio = 0.5,
   before = false,
 ): PaneNode {
-  if (node.kind === "leaf") {
-    if (node.pane.paneId !== targetPaneId) return node;
-    const fresh = leafOf(newPane);
-    return {
-      kind: "split",
-      id: `split:${crypto.randomUUID()}`,
-      dir,
-      a: before ? fresh : node,
-      b: before ? node : fresh,
-      ratio,
-    };
-  }
-  return {
-    ...node,
-    a: splitAt(node.a, targetPaneId, dir, newPane, ratio, before),
-    b: splitAt(node.b, targetPaneId, dir, newPane, ratio, before),
-  };
+  const side: GraftSide = dir === "v" ? (before ? "left" : "right") : before ? "top" : "bottom";
+  return graftAt(node, targetPaneId, side, leafOf(newPane), before ? ratio : 1 - ratio);
 }
 
 // null means that was the last pane standing - the caller closes the whole tab.

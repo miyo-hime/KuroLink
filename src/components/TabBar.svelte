@@ -15,6 +15,7 @@
     onNewLocalTab: (shellType: LocalShellId) => void;
     localShells: LocalShellInfo[];
     onReorderTabs: (fromIndex: number, toIndex: number) => void;
+    onOpenFile: (sessionId: string, path: string) => void;
   }
 
   let {
@@ -29,6 +30,7 @@
     onNewLocalTab,
     localShells,
     onReorderTabs,
+    onOpenFile,
   }: Props = $props();
 
   interface ContextMenu {
@@ -56,6 +58,10 @@
   let dropdownEl = $state<HTMLDivElement | null>(null);
   let arrowEl = $state<HTMLButtonElement | null>(null);
   let contextEl = $state<HTMLDivElement | null>(null);
+  let fileDragOver = $state(false);
+
+  const TAB_DRAG = "application/x-kurolink-tab";
+  const FILE_DRAG = "application/x-kurolink-file";
 
   // close dropdown/context menu on click-outside
   onMount(() => {
@@ -88,12 +94,16 @@
       e.dataTransfer.effectAllowed = "move";
       // firefox needs this
       e.dataTransfer.setData("text/plain", String(index));
+      // panes read this to graft-on-drop; the custom type keeps file/text drags out of it
+      e.dataTransfer.setData("application/x-kurolink-tab", tabs[index].id);
     }
   }
 
   function handleDragOver(e: DragEvent, index: number) {
+    // a file drag isn't a reorder - let it bubble to the bar's new-tab drop zone
+    if (!e.dataTransfer?.types.includes(TAB_DRAG)) return;
     e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    e.dataTransfer.dropEffect = "move";
     dropIndex = index;
   }
 
@@ -109,6 +119,28 @@
   function handleDragEnd() {
     dragIndex = null;
     dropIndex = null;
+  }
+
+  // a file dragged from the browser onto the strip opens as a new tab
+  function handleBarDragOver(e: DragEvent) {
+    if (!e.dataTransfer?.types.includes(FILE_DRAG)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    fileDragOver = true;
+  }
+
+  function handleBarDragLeave(e: DragEvent) {
+    if (e.relatedTarget && (e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) return;
+    fileDragOver = false;
+  }
+
+  function handleBarDrop(e: DragEvent) {
+    fileDragOver = false;
+    const raw = e.dataTransfer?.getData(FILE_DRAG);
+    if (!raw) return;
+    e.preventDefault();
+    const { sessionId, path } = JSON.parse(raw);
+    onOpenFile(sessionId, path);
   }
 
   // -- context menu --
@@ -159,7 +191,14 @@
   }
 </script>
 
-<div class="tab-bar">
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+  class="tab-bar"
+  class:file-drop={fileDragOver}
+  ondragover={handleBarDragOver}
+  ondragleave={handleBarDragLeave}
+  ondrop={handleBarDrop}
+>
   <div class="tab-scroll">
     {#each tabs as tab, index (tab.id)}
       {@const h = head(tab)}
@@ -287,6 +326,12 @@
     height: 32px;
     flex-shrink: 0;
     position: relative;
+  }
+
+  /* a file's hovering, ready to land as a new tab */
+  .tab-bar.file-drop {
+    box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.6);
+    background: rgba(var(--accent-rgb), 0.08);
   }
 
   /* scrollable tab area */

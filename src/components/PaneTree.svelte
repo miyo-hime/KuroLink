@@ -1,21 +1,71 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import type { Pane, PaneNode } from "../lib/types";
+  import type { GraftSide } from "../lib/paneTree";
   import PaneTree from "./PaneTree.svelte";
+
+  type DropHint = { paneId: string; side: GraftSide } | null;
 
   interface Props {
     node: PaneNode;
     activePaneId: string;
     tabVisible: boolean;
     multiPane: boolean;
+    dropHint: DropHint;
     onFocusPane: (paneId: string) => void;
     onSetRatio: (splitId: string, ratio: number) => void;
     onClosePane: (paneId: string) => void;
+    onDropHint: (hint: DropHint) => void;
+    onGraftTab: (tabId: string, targetPaneId: string, side: GraftSide) => void;
+    onOpenFilePane: (sessionId: string, path: string, targetPaneId: string, side: GraftSide) => void;
     // (pane, visible, focused, multiPane) -> the actual TerminalPanel/EditorPanel
     leaf: Snippet<[Pane, boolean, boolean, boolean]>;
   }
 
-  let { node, activePaneId, tabVisible, multiPane, onFocusPane, onSetRatio, onClosePane, leaf }: Props = $props();
+  let { node, activePaneId, tabVisible, multiPane, dropHint, onFocusPane, onSetRatio, onClosePane, onDropHint, onGraftTab, onOpenFilePane, leaf }: Props = $props();
+
+  const TAB_DRAG = "application/x-kurolink-tab";
+  const FILE_DRAG = "application/x-kurolink-file";
+
+  // a tab grafts beside the pane, a file opens as an editor beside it - both land the
+  // same way, so they share the quadrant hint and only differ on drop.
+  function graftKind(dt: DataTransfer | null): "tab" | "file" | null {
+    if (dt?.types.includes(TAB_DRAG)) return "tab";
+    if (dt?.types.includes(FILE_DRAG)) return "file";
+    return null;
+  }
+
+  // cursor nearest edge -> the side the drop grafts onto, WT-style
+  function edgeOf(e: DragEvent, el: HTMLElement): GraftSide {
+    const r = el.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width;
+    const y = (e.clientY - r.top) / r.height;
+    const d: Record<GraftSide, number> = { left: x, right: 1 - x, top: y, bottom: 1 - y };
+    return (Object.keys(d) as GraftSide[]).reduce((best, k) => (d[k] < d[best] ? k : best), "right");
+  }
+
+  function onPaneDragOver(e: DragEvent, paneId: string) {
+    const kind = graftKind(e.dataTransfer);
+    if (!kind) return;
+    e.preventDefault();
+    e.dataTransfer!.dropEffect = kind === "tab" ? "move" : "copy";
+    onDropHint({ paneId, side: edgeOf(e, e.currentTarget as HTMLElement) });
+  }
+
+  function onPaneDrop(e: DragEvent, paneId: string) {
+    const kind = graftKind(e.dataTransfer);
+    if (!kind) return;
+    e.preventDefault();
+    const side = edgeOf(e, e.currentTarget as HTMLElement);
+    if (kind === "tab") {
+      const tabId = e.dataTransfer!.getData(TAB_DRAG);
+      if (tabId) onGraftTab(tabId, paneId, side);
+    } else {
+      const { sessionId, path } = JSON.parse(e.dataTransfer!.getData(FILE_DRAG));
+      onOpenFilePane(sessionId, path, paneId, side);
+    }
+    onDropHint(null);
+  }
 
   let splitEl = $state<HTMLDivElement | null>(null);
 
@@ -51,8 +101,13 @@
     class:pane-focused={tabVisible && node.pane.paneId === activePaneId}
     data-pane-id={node.pane.paneId}
     onpointerdowncapture={() => onFocusPane(node.pane.paneId)}
+    ondragover={(e) => onPaneDragOver(e, node.pane.paneId)}
+    ondrop={(e) => onPaneDrop(e, node.pane.paneId)}
   >
     {@render leaf(node.pane, tabVisible, tabVisible && node.pane.paneId === activePaneId, multiPane)}
+    {#if dropHint && dropHint.paneId === node.pane.paneId}
+      <div class="drop-hint drop-hint-{dropHint.side}"></div>
+    {/if}
     {#if multiPane && node.pane.backend.kind !== "editor"}
       <button
         class="pane-close"
@@ -66,7 +121,7 @@
 {:else}
   <div class="pane-split pane-split-{node.dir}" bind:this={splitEl}>
     <div class="pane-slot" style="flex-grow: {node.ratio};">
-      <PaneTree node={node.a} {activePaneId} {tabVisible} {multiPane} {onFocusPane} {onSetRatio} {onClosePane} {leaf} />
+      <PaneTree node={node.a} {activePaneId} {tabVisible} {multiPane} {dropHint} {onFocusPane} {onSetRatio} {onClosePane} {onDropHint} {onGraftTab} {onOpenFilePane} {leaf} />
     </div>
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
@@ -74,7 +129,7 @@
       onpointerdown={(e) => startDrag(e, node.dir)}
     ></div>
     <div class="pane-slot" style="flex-grow: {1 - node.ratio};">
-      <PaneTree node={node.b} {activePaneId} {tabVisible} {multiPane} {onFocusPane} {onSetRatio} {onClosePane} {leaf} />
+      <PaneTree node={node.b} {activePaneId} {tabVisible} {multiPane} {dropHint} {onFocusPane} {onSetRatio} {onClosePane} {onDropHint} {onGraftTab} {onOpenFilePane} {leaf} />
     </div>
   </div>
 {/if}
@@ -123,6 +178,21 @@
     color: var(--accent-secondary);
     border-color: var(--accent-secondary);
   }
+
+  /* drag-to-split landing zone. half the pane, on the edge the cursor's nearest. lives
+     above the focus ring, pointer-events off so the drop still lands on .pane. */
+  .drop-hint {
+    position: absolute;
+    z-index: 17;
+    pointer-events: none;
+    background: rgba(var(--accent-rgb), 0.18);
+    box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.65);
+  }
+
+  .drop-hint-left { inset: 0 50% 0 0; }
+  .drop-hint-right { inset: 0 0 0 50%; }
+  .drop-hint-top { inset: 0 0 50% 0; }
+  .drop-hint-bottom { inset: 50% 0 0 0; }
 
   /* the focused-pane ring. inset box-shadow, not border - no layout shift, and it
      rides over the canvas without stealing a pixel from the terminal. */

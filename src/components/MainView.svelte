@@ -2,7 +2,7 @@
   import { onMount, untrack } from "svelte";
   import { DEFAULT_LOCAL_SHELLS } from "../lib/types";
   import type { ConnectionProfile, Pane, PaneNode, Tab, SystemStats, ConnectionStatus, TabBackend, LocalShellId, LocalShellInfo, SavedSession, SavedTab, SavedPane, SavedTabEntry } from "../lib/types";
-  import { leafOf, panesOf, findPane, mapPanes, splitAt, removePane, setRatio } from "../lib/paneTree";
+  import { leafOf, panesOf, findPane, mapPanes, splitAt, graftAt, removePane, setRatio, type GraftSide } from "../lib/paneTree";
   import { attachCommandKeys } from "../lib/shortcuts";
   import { commands, type Command } from "../lib/commands.svelte";
   import { appearance } from "../lib/appearance.svelte";
@@ -67,6 +67,9 @@
   let reconnecting = $state(false);
   let profiles = $state<ConnectionProfile[]>([]);
   let localShells = $state<LocalShellInfo[]>(DEFAULT_LOCAL_SHELLS);
+  // which pane is showing a drag-to-split landing zone, and on which edge. lifted out of
+  // PaneTree so moving across panes doesn't leave stale highlights on the ones you left.
+  let paneDropHint = $state<{ paneId: string; side: GraftSide } | null>(null);
 
   let tabCount = 0;
   let sessionListeners = new Map<string, UnlistenFn>();
@@ -196,21 +199,32 @@
     addTab({ paneId, title: basename(path), backend: { kind: "editor", sessionId, profileId: pid, path } });
   }
 
+  // right-click "Open to the Side / Below" grafts off the active pane; same path the
+  // drag-drop takes, just with the side picked by the menu instead of the cursor.
   function openFileSplit(sessionId: string, path: string, dir: "h" | "v") {
+    if (!activeTab) return;
+    openFileAtPane(sessionId, path, activeTab.activePaneId, dir === "v" ? "right" : "bottom");
+  }
+
+  // drop a file from the browser onto a specific pane: open it as an editor grafted on
+  // that pane's chosen edge. de-dupes within the target tab - already open here? focus it.
+  function openFileAtPane(sessionId: string, path: string, targetPaneId: string, side: GraftSide) {
     ensureEditorPanel();
-    const tab = activeTab;
+    const tab = tabs.find((t) => panesOf(t.layout).some((p) => p.paneId === targetPaneId));
     if (!tab) return;
     const existing = panesOf(tab.layout).find(
       (p) => p.backend.kind === "editor" && p.backend.sessionId === sessionId && p.backend.path === path,
     );
     if (existing) {
+      activeTabId = tab.id;
       tabs = tabs.map((t) => (t.id === tab.id ? { ...t, activePaneId: existing.paneId } : t));
       return;
     }
     const paneId = `editor:${crypto.randomUUID()}`;
     const editor: Pane = { paneId, title: basename(path), backend: { kind: "editor", sessionId, profileId: profileForSession(sessionId), path } };
-    const layout = splitAt(tab.layout, tab.activePaneId, dir, editor, 0.5);
+    const layout = graftAt(tab.layout, targetPaneId, side, leafOf(editor));
     tabs = tabs.map((t) => (t.id === tab.id ? { ...t, layout, activePaneId: paneId } : t));
+    activeTabId = tab.id;
   }
 
   // an editor has no pty to clone, so a split off one drops a shell on its host: borrow
@@ -367,6 +381,22 @@
     const [moved] = next.splice(fromIndex, 1);
     next.splice(toIndex, 0, moved);
     tabs = next;
+  }
+
+  // drop a dragged tab onto a pane: graft the dragged tab's whole layout in beside that
+  // pane. a re-parent, not a teardown - the panes stay live, so we route around
+  // handleCloseTab (which would kill the PTYs) and just pull the tree out by hand.
+  function graftTab(sourceTabId: string, targetPaneId: string, side: GraftSide) {
+    const source = tabs.find((t) => t.id === sourceTabId);
+    const target = tabs.find((t) => panesOf(t.layout).some((p) => p.paneId === targetPaneId));
+    if (!source || !target || source.id === target.id) return;
+    const incoming = source.layout;
+    const focus = source.activePaneId;
+    tabs = tabs
+      .filter((t) => t.id !== source.id)
+      .map((t) => (t.id === target.id ? { ...t, layout: graftAt(t.layout, targetPaneId, side, incoming), activePaneId: focus } : t));
+    activeTabId = target.id;
+    paneDropHint = null;
   }
 
   // windows shells set the title to full exe paths and command lines -
@@ -844,9 +874,12 @@
     detectLocalShells().then((s) => (localShells = s)).catch(() => {});
 
     const detachKeys = attachCommandKeys();
+    const clearHint = () => (paneDropHint = null);
+    window.addEventListener("dragend", clearHint);
     return () => {
       detachKeys();
       commands.clear();
+      window.removeEventListener("dragend", clearHint);
     };
   });
 
@@ -940,6 +973,7 @@
     onNewLocalTab={createLocalTab}
     {localShells}
     onReorderTabs={handleReorderTabs}
+    onOpenFile={openEditorTab}
   />
   <div class="work-area">
     {#if filesVisible && activeSessionId && !isActiveLost}
@@ -989,9 +1023,13 @@
             activePaneId={tab.activePaneId}
             tabVisible={tab.id === activeTabId}
             multiPane={panesOf(tab.layout).length > 1}
+            dropHint={paneDropHint}
             onFocusPane={(pid) => focusPane(tab.id, pid)}
             onSetRatio={(sid, r) => setTabRatio(tab.id, sid, r)}
             onClosePane={closePane}
+            onDropHint={(h) => (paneDropHint = h)}
+            onGraftTab={graftTab}
+            onOpenFilePane={openFileAtPane}
             leaf={paneLeaf}
           />
         </div>
