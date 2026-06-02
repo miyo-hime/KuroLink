@@ -2,7 +2,9 @@
   import { onMount, untrack } from "svelte";
   import { DEFAULT_LOCAL_SHELLS } from "../lib/types";
   import type { ConnectionProfile, TerminalTab, SystemStats, ConnectionStatus, TabBackend, LocalShellId, LocalShellInfo, SavedSession, SavedTab } from "../lib/types";
-  import { attachShortcuts } from "../lib/shortcuts";
+  import { attachCommandKeys } from "../lib/shortcuts";
+  import { commands, type Command } from "../lib/commands.svelte";
+  import { appearance } from "../lib/appearance.svelte";
   import {
     openShell,
     openSshShell,
@@ -23,6 +25,7 @@
   import StatusBar from "./StatusBar.svelte";
   import FileBrowser from "./FileBrowser.svelte";
   import TransferTray from "./TransferTray.svelte";
+  import CommandPalette from "./CommandPalette.svelte";
   import { transfers } from "../lib/transfers.svelte";
 
   interface Props {
@@ -392,6 +395,141 @@
     }
   }
 
+  function nextTab() {
+    const idx = tabs.findIndex((t) => t.channelId === activeTabId);
+    if (idx >= 0 && tabs.length > 1) activeTabId = tabs[(idx + 1) % tabs.length].channelId;
+  }
+
+  function prevTab() {
+    const idx = tabs.findIndex((t) => t.channelId === activeTabId);
+    if (idx >= 0 && tabs.length > 1) activeTabId = tabs[(idx - 1 + tabs.length) % tabs.length].channelId;
+  }
+
+  // the whole bridge in one list. derived off live state so a lost link flips
+  // "reconnect" on, a new profile shows up as its own jump-to op, etc. the palette
+  // reads this; the key dispatcher matches chords against it. one source, two doors.
+  function buildCommands(): Command[] {
+    const list: Command[] = [
+      { id: "tab.new", title: "New Tab", group: "TABS", keywords: "open create terminal split", run: handleNewTab },
+      {
+        id: "tab.close",
+        title: "Close Tab",
+        group: "TABS",
+        keywords: "kill quit",
+        chord: "Ctrl ⇧ W",
+        enabled: activeTabId != null,
+        match: (e) => e.ctrlKey && e.shiftKey && e.code === "KeyW",
+        run: () => { if (activeTabId) handleCloseTab(activeTabId); },
+      },
+      {
+        id: "tab.reopen",
+        title: "Reopen Closed Tab",
+        group: "TABS",
+        keywords: "undo restore",
+        chord: "Ctrl ⇧ T",
+        match: (e) => e.ctrlKey && e.shiftKey && e.code === "KeyT",
+        run: handleReopenTab,
+      },
+      {
+        id: "tab.next",
+        title: "Next Tab",
+        group: "TABS",
+        chord: "Ctrl Tab",
+        enabled: tabs.length > 1,
+        match: (e) => e.ctrlKey && !e.shiftKey && e.key === "Tab",
+        run: nextTab,
+      },
+      {
+        id: "tab.prev",
+        title: "Previous Tab",
+        group: "TABS",
+        chord: "Ctrl ⇧ Tab",
+        enabled: tabs.length > 1,
+        match: (e) => e.ctrlKey && e.shiftKey && e.key === "Tab",
+        run: prevTab,
+      },
+      {
+        id: "view.files",
+        title: filesVisible ? "Hide File Browser" : "Show File Browser",
+        group: "VIEW",
+        keywords: "sftp explorer files",
+        enabled: filesAvailable,
+        run: () => (filesVisible = !filesVisible),
+      },
+      {
+        id: "view.search",
+        title: searchVisible ? "Hide Find" : "Find in Terminal",
+        group: "VIEW",
+        keywords: "search grep",
+        run: () => (searchVisible = !searchVisible),
+      },
+      {
+        id: "view.settings",
+        title: "Appearance Settings",
+        group: "VIEW",
+        keywords: "theme color font glass config preset",
+        run: () => appearance.openSettings(),
+      },
+      {
+        id: "session.reconnect",
+        title: "Reconnect Link",
+        group: "SESSION",
+        keywords: "reconnect retry revive",
+        enabled: isActiveLost && !reconnecting,
+        run: handleReconnect,
+      },
+      {
+        id: "session.disconnect",
+        title: "Terminate Link",
+        group: "SESSION",
+        keywords: "disconnect quit exit close all",
+        run: handleDisconnect,
+      },
+    ];
+
+    for (const shell of localShells) {
+      if (!shell.available) continue;
+      list.push({
+        id: `open.local.${shell.id}`,
+        title: `Open ${shell.label}`,
+        group: "NEW · LOCAL",
+        keywords: "shell terminal local",
+        run: () => createLocalTab(shell.id),
+      });
+    }
+
+    for (const p of profiles) {
+      list.push({
+        id: `open.ssh.${p.id}`,
+        title: `Connect ${p.name}`,
+        group: "NEW · SSH",
+        detail: p.host,
+        keywords: `ssh remote ${p.host}`,
+        run: () => createSshTabFromProfile(p.id),
+      });
+    }
+
+    tabs.forEach((t, i) => {
+      list.push({
+        id: `goto.${t.channelId}`,
+        title: t.title,
+        group: "GO TO TAB",
+        detail: String(i + 1),
+        keywords: "switch jump focus",
+        chord: i < 9 ? `Ctrl ${i + 1}` : undefined,
+        enabled: t.channelId !== activeTabId,
+        match: i < 9 ? (e) => e.ctrlKey && !e.shiftKey && !e.altKey && e.code === `Digit${i + 1}` : undefined,
+        run: () => (activeTabId = t.channelId),
+      });
+    });
+
+    return list;
+  }
+
+  $effect(() => {
+    commands.set(buildCommands());
+  });
+
   function profileLabel(profileId: string): string {
     const p = profiles.find((p) => p.id === profileId);
     return p?.name || p?.host || "SSH";
@@ -497,27 +635,11 @@
     getProfiles().then((p) => (profiles = p)).catch(() => {});
     detectLocalShells().then((s) => (localShells = s)).catch(() => {});
 
-    return attachShortcuts({
-      onNextTab: () => {
-        const idx = tabs.findIndex((t) => t.channelId === activeTabId);
-        if (idx >= 0 && tabs.length > 1) {
-          activeTabId = tabs[(idx + 1) % tabs.length].channelId;
-        }
-      },
-      onPrevTab: () => {
-        const idx = tabs.findIndex((t) => t.channelId === activeTabId);
-        if (idx >= 0 && tabs.length > 1) {
-          activeTabId = tabs[(idx - 1 + tabs.length) % tabs.length].channelId;
-        }
-      },
-      onCloseTab: () => {
-        if (activeTabId) handleCloseTab(activeTabId);
-      },
-      onReopenTab: handleReopenTab,
-      onGoToTab: (index: number) => {
-        if (index < tabs.length) activeTabId = tabs[index].channelId;
-      },
-    });
+    const detachKeys = attachCommandKeys();
+    return () => {
+      detachKeys();
+      commands.clear();
+    };
   });
 
   // session error listeners: register/unregister as ssh sessions come and go
@@ -669,6 +791,7 @@
     </div>
   </div>
   <TransferTray />
+  <CommandPalette />
   <StatusBar {stats} {prevStats} pollIntervalMs={STATS_POLL_MS} />
 </div>
 

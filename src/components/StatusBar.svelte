@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { SystemStats } from "../lib/types";
+  import { commands } from "../lib/commands.svelte";
 
   interface Props {
     stats: SystemStats | null;
@@ -22,14 +23,12 @@
   }
 </script>
 
-{#if !stats}
-  <div class="status-bar">
+<div class="status-bar">
+  {#if !stats}
     <span class="stat-item stat-dim">Awaiting telemetry...</span>
-  </div>
-{:else}
-  {@const rxRate = prevStats ? (stats.net_rx_bytes - prevStats.net_rx_bytes) / (pollIntervalMs / 1000) : 0}
-  {@const txRate = prevStats ? (stats.net_tx_bytes - prevStats.net_tx_bytes) / (pollIntervalMs / 1000) : 0}
-  <div class="status-bar">
+  {:else}
+    {@const rxRate = prevStats ? (stats.net_rx_bytes - prevStats.net_rx_bytes) / (pollIntervalMs / 1000) : 0}
+    {@const txRate = prevStats ? (stats.net_tx_bytes - prevStats.net_tx_bytes) / (pollIntervalMs / 1000) : 0}
     {#if stats.cpu_temp != null}
       <span class="stat-item">
         <span class="stat-label">CPU</span>
@@ -56,8 +55,13 @@
       <span class="stat-net-up">▲ {formatRate(txRate)}</span>
       <span class="stat-net-down">▼ {formatRate(rxRate)}</span>
     </span>
-  </div>
-{/if}
+  {/if}
+
+  <button class="cmd-hint" onclick={() => commands.toggle()} title="Open command deck">
+    <span class="cmd-hint-keys"><kbd>Ctrl</kbd><kbd>⇧</kbd><kbd>Space</kbd></span>
+    <span class="cmd-hint-label">COMMAND</span>
+  </button>
+</div>
 
 <style>
   .status-bar {
@@ -127,5 +131,79 @@
 
   .stat-dim {
     opacity: 0.5;
+  }
+
+  /* shoved to the right edge - doubles as the mouse door into the deck */
+  .cmd-hint {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0 0.25rem;
+    font-family: inherit;
+  }
+
+  .cmd-hint-keys {
+    display: flex;
+    gap: 0.2rem;
+  }
+
+  .cmd-hint-keys kbd {
+    font-family: inherit;
+    font-size: 0.5rem;
+    line-height: 1;
+    padding: 0.16rem 0.3rem;
+    background: rgba(var(--accent-rgb), 0.05);
+    border-radius: 2px;
+    /* slow theme-colored breath - border + glow ride the accent */
+    animation: cmd-key-glow 5s ease-in-out infinite;
+  }
+
+  .cmd-hint-label {
+    font-size: 0.55rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    animation: cmd-label-glow 5s ease-in-out infinite;
+  }
+
+  /* hover freezes the breath at its bright peak */
+  .cmd-hint:hover .cmd-hint-keys kbd {
+    animation: none;
+    color: var(--accent-primary);
+    border: 1px solid var(--border-glow);
+    box-shadow: var(--glow-sm) rgba(var(--accent-rgb), 0.4);
+  }
+
+  .cmd-hint:hover .cmd-hint-label {
+    animation: none;
+    color: var(--accent-primary);
+    text-shadow: var(--glow-sm) rgba(var(--accent-rgb), 0.5);
+  }
+
+  @keyframes cmd-key-glow {
+    0%, 100% {
+      color: var(--text-secondary);
+      border: 1px solid var(--border-subtle);
+      box-shadow: none;
+    }
+    50% {
+      color: var(--accent-primary);
+      border: 1px solid var(--border-active);
+      box-shadow: var(--glow-sm) rgba(var(--accent-rgb), 0.4);
+    }
+  }
+
+  @keyframes cmd-label-glow {
+    0%, 100% {
+      color: var(--text-label);
+      text-shadow: none;
+    }
+    50% {
+      color: var(--accent-primary);
+      text-shadow: var(--glow-sm) rgba(var(--accent-rgb), 0.5);
+    }
   }
 </style>
