@@ -1,6 +1,6 @@
 [package]
 name = "kurolink"
-version = "0.16.1"
+version = "0.17.0"
 description = "SSH client that looks like a mecha command console"
 authors = ["Miyo Kanemitsu"]
 license = "Apache-2.0"
@@ -32,7 +32,12 @@ russh-sftp = "2.3"
 tokio = { version = "1", features = ["sync", "macros", "time", "net"] }
 uuid = { version = "1", features = ["v4"] }
 log = "0.4"
-# already compiled via russh, just making it directly available for passphrase encryption
+# secrets (key passphrases, host passwords) live in the OS credential store, not our
+# json. windows-native = the win credential manager, dpapi-backed - the blob is tied to
+# the windows login, so copying kurolink.json off the box gets you nothing.
+keyring = { version = "3", features = ["windows-native"] }
+# kept only to read + migrate pre-0.17 passphrases off the old path-derived aes blob.
+# nothing new is written with these. rip them out once every config has migrated.
 ring = "0.17"
 base64 = "0.22"
 # local terminal PTY (powers wezterm, handles ConPTY on windows)

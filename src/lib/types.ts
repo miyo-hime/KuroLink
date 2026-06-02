@@ -1,4 +1,4 @@
-export type AuthMode = "key_file" | "agent";
+export type AuthMode = "key_file" | "agent" | "password";
 
 export interface ConnectionProfile {
   id: string;
@@ -10,7 +10,7 @@ export interface ConnectionProfile {
   created_at: string;
   last_connected: string | null;
   has_passphrase: boolean;
-  saved_passphrase: string | null;
+  save_password: boolean;
   auth_mode: AuthMode;
 }
 

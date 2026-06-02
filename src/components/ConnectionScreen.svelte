@@ -9,8 +9,9 @@
     deleteProfile,
     probeHost,
     connectSsh,
-    encryptPassphrase,
-    decryptPassphrase,
+    saveProfileSecret,
+    getProfileSecret,
+    clearProfileSecret,
     detectAgent,
     detectLocalShells,
     listAgentIdentities,
@@ -46,7 +47,7 @@
     key_path: "~/.ssh/id_ed25519",
     last_connected: null,
     has_passphrase: false,
-    saved_passphrase: null,
+    save_password: false,
     auth_mode: "agent",
   };
 
@@ -66,14 +67,18 @@
   let passphrasePrompt = $state(false);
   let passphrase = $state("");
   let savePass = $state(false);
+  let password = $state("");
+  let savePassword = $state(false);
   let agentAvailable = $state(false);
   let agentKeys = $state<AgentIdentityInfo[]>([]);
   let localShells = $state<LocalShellInfo[]>(DEFAULT_LOCAL_SHELLS);
 
   let formValid = $derived(
     form.auth_mode === "agent"
-      ? form.host && form.username
-      : form.host && form.username && form.key_path,
+      ? !!(form.host && form.username)
+      : form.auth_mode === "password"
+        ? !!(form.host && form.username && password)
+        : !!(form.host && form.username && form.key_path),
   );
 
   // load profiles on mount, auto-probe last profile
@@ -92,40 +97,22 @@
         const last = await getLastProfile();
         if (last) {
           selectedId = last.id;
-          form = {
-            name: last.name,
-            host: last.host,
-            port: last.port,
-            username: last.username,
-            key_path: last.key_path,
-            last_connected: last.last_connected,
-            has_passphrase: last.has_passphrase ?? false,
-            saved_passphrase: last.saved_passphrase ?? null,
-            auth_mode: last.auth_mode ?? "agent",
-          };
-          if (last.saved_passphrase) {
-            savePass = true;
-            // decrypt so we have it ready for probe/connect
-            try {
-              passphrase = await decryptPassphrase(last.saved_passphrase);
-            } catch {
-              // corrupted or wrong key, they'll need to re-enter
-            }
-          }
+          form = profileToForm(last);
+          await loadProfileSecrets(last);
 
           // auto-probe if we have enough info
           const mode = last.auth_mode ?? "agent";
           const canProbe = mode === "agent"
             ? last.host && last.username
-            : last.host && last.username && last.key_path;
+            : mode === "password"
+              ? last.host && last.username && password
+              : last.host && last.username && last.key_path;
           if (canProbe) {
             probing = true;
             try {
-              let pp: string | null = null;
-              if (mode === "key_file" && last.has_passphrase && last.saved_passphrase) {
-                pp = await decryptPassphrase(last.saved_passphrase).catch(() => null);
-              }
-              status = await probeHost(last.host, last.port, last.username, last.key_path, pp, mode);
+              const pp = mode === "key_file" && last.has_passphrase ? passphrase || null : null;
+              const pw = mode === "password" ? password || null : null;
+              status = await probeHost(last.host, last.port, last.username, last.key_path, pp, pw, mode);
             } catch {
               // whatever, they can probe manually
             } finally {
@@ -139,35 +126,50 @@
     })();
   });
 
+  function profileToForm(p: ConnectionProfile) {
+    return {
+      name: p.name,
+      host: p.host,
+      port: p.port,
+      username: p.username,
+      key_path: p.key_path,
+      last_connected: p.last_connected,
+      has_passphrase: p.has_passphrase ?? false,
+      save_password: p.save_password ?? false,
+      auth_mode: p.auth_mode ?? "agent",
+    };
+  }
+
+  // pull saved secrets out of the keychain into the form state, ready for probe/connect
+  async function loadProfileSecrets(p: ConnectionProfile) {
+    passphrase = "";
+    password = "";
+    savePass = false;
+    savePassword = false;
+    if (p.has_passphrase) {
+      const s = await getProfileSecret(p.id, "passphrase").catch(() => null);
+      if (s) { passphrase = s; savePass = true; }
+    }
+    if (p.auth_mode === "password" && p.save_password) {
+      const s = await getProfileSecret(p.id, "password").catch(() => null);
+      if (s) { password = s; savePassword = true; }
+    }
+  }
+
   async function handleProfileChange(e: Event) {
     const value = (e.currentTarget as HTMLSelectElement).value;
     const p = profiles.find((p) => p.id === value);
     if (p) {
       selectedId = p.id;
-      form = {
-        name: p.name,
-        host: p.host,
-        port: p.port,
-        username: p.username,
-        key_path: p.key_path,
-        last_connected: p.last_connected,
-        has_passphrase: p.has_passphrase ?? false,
-        saved_passphrase: p.saved_passphrase ?? null,
-        auth_mode: p.auth_mode ?? "agent",
-      };
-      savePass = !!p.saved_passphrase;
-      if (p.saved_passphrase) {
-        try {
-          passphrase = await decryptPassphrase(p.saved_passphrase);
-        } catch { passphrase = ""; }
-      } else {
-        passphrase = "";
-      }
+      form = profileToForm(p);
+      await loadProfileSecrets(p);
     } else {
       selectedId = null;
       form = { ...DEFAULT_PROFILE };
       passphrase = "";
       savePass = false;
+      password = "";
+      savePassword = false;
     }
     status = null;
   }
@@ -182,10 +184,9 @@
     status = null;
   }
 
-  function handleAuthModeToggle(e: Event) {
-    const checked = (e.currentTarget as HTMLInputElement).checked;
-    const mode: AuthMode = checked ? "agent" : "key_file";
+  function setAuthMode(mode: AuthMode) {
     form.auth_mode = mode;
+    status = null;
     if (mode === "agent" && agentKeys.length === 0) {
       listAgentIdentities().then((k) => (agentKeys = k)).catch(() => {});
     }
@@ -206,12 +207,14 @@
     error = null;
     try {
       const pp = form.auth_mode === "key_file" && form.has_passphrase ? passphrase || null : null;
+      const pw = form.auth_mode === "password" ? password || null : null;
       status = await probeHost(
         form.host,
         form.port,
         form.username,
         form.key_path,
         pp,
+        pw,
         form.auth_mode,
       );
     } catch (e) {
@@ -222,18 +225,15 @@
     }
   }
 
-  async function doConnect(pp: string | null) {
+  async function doConnect() {
     connecting = true;
     error = null;
     try {
       const profileId = selectedId || crypto.randomUUID();
       const now = new Date().toISOString();
-
-      // encrypt passphrase if user opted to save it
-      let savedPassphrase: string | null = null;
-      if (form.has_passphrase && savePass && pp) {
-        savedPassphrase = await encryptPassphrase(pp);
-      }
+      const pp = form.auth_mode === "key_file" && form.has_passphrase ? passphrase || null : null;
+      const pw = form.auth_mode === "password" ? password || null : null;
+      const keepPassword = form.auth_mode === "password" && savePassword;
 
       const profile: ConnectionProfile = {
         id: profileId,
@@ -245,10 +245,23 @@
         created_at: now,
         last_connected: now,
         has_passphrase: form.has_passphrase,
-        saved_passphrase: savedPassphrase,
+        save_password: keepPassword,
         auth_mode: form.auth_mode,
       };
       await saveProfile(profile);
+
+      // stow or wipe the saved secrets per the user's toggles. the keychain is the
+      // source of truth now - the profile only carries the "go look" flags.
+      if (form.auth_mode === "key_file" && form.has_passphrase && savePass && pp) {
+        await saveProfileSecret(profileId, "passphrase", pp);
+      } else if (!form.has_passphrase || !savePass) {
+        await clearProfileSecret(profileId, "passphrase").catch(() => {});
+      }
+      if (keepPassword && pw) {
+        await saveProfileSecret(profileId, "password", pw);
+      } else {
+        await clearProfileSecret(profileId, "password").catch(() => {});
+      }
 
       const sessionId = await connectSsh(
         profileId,
@@ -257,6 +270,7 @@
         form.username,
         form.key_path,
         pp,
+        pw,
         form.auth_mode,
       );
       onConnected(sessionId, profileId, profile);
@@ -279,13 +293,12 @@
   }
 
   function handleConnect() {
-    const pp = form.has_passphrase ? passphrase || null : null;
-    doConnect(pp);
+    doConnect();
   }
 
   function handlePassphraseSubmit() {
     passphrasePrompt = false;
-    doConnect(passphrase);
+    doConnect();
   }
 
   function handlePassphraseCancel() {
@@ -348,16 +361,25 @@
               <label class="field-label" for="f-user">USER</label>
               <input id="f-user" type="text" bind:value={form.username} placeholder="user" />
             </div>
-            <div class="form-row form-row-checkbox">
-              <label class="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={form.auth_mode === "agent"}
-                  onchange={handleAuthModeToggle}
-                />
-                <span class="toggle-track"></span>
-                <span class="toggle-label-text">SSH AGENT</span>
-              </label>
+            <div class="form-row form-row-auth">
+              <span class="field-label">AUTH</span>
+              <div class="auth-seg">
+                <button
+                  type="button"
+                  class="auth-seg-btn{form.auth_mode === 'agent' ? ' auth-seg-active' : ''}"
+                  onclick={() => setAuthMode("agent")}
+                >AGENT</button>
+                <button
+                  type="button"
+                  class="auth-seg-btn{form.auth_mode === 'key_file' ? ' auth-seg-active' : ''}"
+                  onclick={() => setAuthMode("key_file")}
+                >KEY</button>
+                <button
+                  type="button"
+                  class="auth-seg-btn{form.auth_mode === 'password' ? ' auth-seg-active' : ''}"
+                  onclick={() => setAuthMode("password")}
+                >PASSWORD</button>
+              </div>
             </div>
             {#if form.auth_mode === "agent"}
               <div class="agent-keys-panel">
@@ -378,7 +400,7 @@
                   </div>
                 {/if}
               </div>
-            {:else}
+            {:else if form.auth_mode === "key_file"}
               <div class="form-row">
                 <label class="field-label" for="f-key">KEY</label>
                 <input id="f-key" type="text" bind:value={form.key_path} placeholder="~/.ssh/id_ed25519" />
@@ -403,10 +425,22 @@
                   <label class="checkbox-label">
                     <input type="checkbox" bind:checked={savePass} />
                     <span class="toggle-track"></span>
-                    <span class="toggle-label-text">SAVE ENCRYPTED</span>
+                    <span class="toggle-label-text">SAVE TO KEYCHAIN</span>
                   </label>
                 </div>
               {/if}
+            {:else}
+              <div class="form-row">
+                <label class="field-label" for="f-pw">PASS</label>
+                <input id="f-pw" type="password" bind:value={password} placeholder="account password" />
+              </div>
+              <div class="form-row form-row-checkbox">
+                <label class="checkbox-label">
+                  <input type="checkbox" bind:checked={savePassword} />
+                  <span class="toggle-track"></span>
+                  <span class="toggle-label-text">SAVE TO KEYCHAIN</span>
+                </label>
+              </div>
             {/if}
           </div>
 
@@ -1044,6 +1078,47 @@
   .checkbox-label input[type="checkbox"]:checked ~ .toggle-label-text::before {
     background: var(--accent-primary);
     box-shadow: 0 0 4px var(--accent-primary);
+  }
+
+  /* auth mode selector - three segments, one lit */
+
+  .form-row-auth::before {
+    content: none;
+  }
+
+  .auth-seg {
+    flex: 1;
+    display: flex;
+    gap: 0.3rem;
+  }
+
+  .auth-seg-btn {
+    flex: 1;
+    background: var(--bg-terminal);
+    color: var(--text-dim);
+    border: 1px solid var(--border-subtle);
+    border-bottom: 2px solid var(--hud-line);
+    padding: 0.4rem 0.3rem;
+    font-family: inherit;
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+  }
+
+  .auth-seg-btn:hover {
+    color: var(--text-secondary);
+    border-color: rgba(var(--accent-rgb), 0.2);
+  }
+
+  .auth-seg-active {
+    color: var(--accent-primary);
+    border-color: var(--accent-primary);
+    border-bottom-color: var(--accent-primary);
+    background: rgba(var(--accent-rgb), 0.06);
+    box-shadow: inset 0 -6px 10px rgba(var(--accent-rgb), 0.06);
+    text-shadow: 0 0 8px rgba(var(--accent-rgb), 0.3);
   }
 
   /* agent keys */

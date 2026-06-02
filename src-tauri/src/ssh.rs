@@ -464,6 +464,61 @@ impl SshSession {
         .map_err(|e| format!("agent auth task failed: {e}"))?
     }
 
+    pub async fn connect_with_password(
+        host: &str,
+        port: u16,
+        username: &str,
+        password: &str,
+    ) -> Result<Self, String> {
+        let config = Arc::new(client::Config {
+            inactivity_timeout: Some(std::time::Duration::from_secs(30)),
+            keepalive_interval: Some(std::time::Duration::from_secs(15)),
+            keepalive_max: 3,
+            ..Default::default()
+        });
+
+        let known_hosts =
+            crate::config::known_hosts_path().unwrap_or_else(|_| PathBuf::from(".ssh/known_hosts"));
+        let handler = SshHandler {
+            known_hosts_path: known_hosts,
+            host: host.to_string(),
+        };
+        let mut handle = client::connect(config, (host, port), handler)
+            .await
+            .map_err(|e| format!("SSH connection failed: {e}"))?;
+
+        let auth = handle
+            .authenticate_password(username, password)
+            .await
+            .map_err(|e| format!("SSH authentication failed: {e}"))?;
+        if auth.success() {
+            return Ok(Self { handle });
+        }
+
+        // plenty of openssh boxes only carry the password through keyboard-interactive,
+        // so a refused password method isn't a no. try the interactive flow before giving up.
+        use client::KeyboardInteractiveAuthResponse as Kia;
+        let mut res = handle
+            .authenticate_keyboard_interactive_start(username.to_string(), None)
+            .await
+            .map_err(|e| format!("keyboard-interactive start failed: {e}"))?;
+        loop {
+            match res {
+                Kia::Success => return Ok(Self { handle }),
+                Kia::Failure { .. } => {
+                    return Err("SSH password authentication rejected by server".to_string())
+                }
+                Kia::InfoRequest { prompts, .. } => {
+                    let answers = prompts.iter().map(|_| password.to_string()).collect();
+                    res = handle
+                        .authenticate_keyboard_interactive_respond(answers)
+                        .await
+                        .map_err(|e| format!("keyboard-interactive response failed: {e}"))?;
+                }
+            }
+        }
+    }
+
     pub async fn open_shell(
         &mut self,
         cols: u32,

@@ -6,7 +6,7 @@ An SSH client and terminal for people who think Windows Terminal is fine but wis
 
 [![Primary Repo](https://img.shields.io/badge/primary-Kurobox-purple?logo=forgejo&style=flat-square)](https://codex.kurobox.me/miyo-rin/KuroLink)
 [![GitHub Mirror](https://img.shields.io/badge/mirror-GitHub-gray?logo=github&style=flat-square)](https://github.com/miyo-hime/KuroLink)
-![Version](https://img.shields.io/badge/v0.16.0-orange?style=flat-square)
+![Version](https://img.shields.io/badge/v0.17.0-orange?style=flat-square)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)
 ![Built with Tauri](https://img.shields.io/badge/Tauri%202-24C8D8?logo=tauri&logoColor=white&style=flat-square)
 ![Svelte 5](https://img.shields.io/badge/Svelte%205-FF3E00?logo=svelte&logoColor=white&style=flat-square)
@@ -15,13 +15,11 @@ An SSH client and terminal for people who think Windows Terminal is fine but wis
 
 ## what is this
 
-a thing I built for myself and a friend.
+a tool I built for myself and a friend. we've both got servers lying around and we're forever sshing in for small stuff - edit a config, tail a log, grab a file. VSCode Remote-SSH for that is a forklift hauling a coffee cup; PuTTY does the job but looks like 2003.
 
-we both have some servers lying around and we're forever sshing in to do small stuff. edit a config, tail a log, grab a file, check whether the disk filled up again. firing up VSCode's whole Remote-SSH for that felt like wheeling out a forklift to move a coffee cup. PuTTY does the job but looks like it's still 2003.
+so: KuroLink. a terminal, an SFTP browser, and a real code editor in one small window that happens to look like a mecha cockpit.
 
-so: KuroLink. a terminal, an SFTP file browser, and a real code editor, all in one small window that happens to look like a mecha cockpit.
-
-**built and tested on Windows 11 only** - it leans on a few win11-specific bits for the glassy look, so on win10 it should run and just drop the glass for a flat background (probably - nobody's actually checked). it's Apache 2.0, so if you want it to go further, the source is right there.
+**built and tested on Windows 11 only** - it leans on win11 bits for the glass, so on win10 it should run and just drop to a flat background (probably - nobody's checked). Apache 2.0; source's right there if you want it to go further.
 
 ## what it does
 
@@ -38,7 +36,7 @@ so: KuroLink. a terminal, an SFTP file browser, and a real code editor, all in o
 - drag-and-drop upload, file-picker upload, download - all with a progress tray you can cancel from
 
 **ssh that behaves**
-- saved connection profiles; SSH agent by default (OpenSSH on Windows, Pageant fallback), or a key file with an optional encrypted passphrase
+- saved connection profiles, three ways in - SSH agent by default (OpenSSH on Windows, Pageant fallback), a key file, or a password. saved passphrases and passwords go in the Windows credential vault, never the config file
 - host-key checking that trusts on first use and yells if a key ever changes
 - notices when the link drops instead of sitting there pretending everything's fine
 

@@ -25,13 +25,18 @@ export const saveAppearance = (appearance: unknown) =>
 export const setWindowVibrancy = (mode: string) =>
   invoke<boolean>("set_window_vibrancy", { mode });
 
-// -- Passphrase --
+// -- Secrets (os keychain, keyed by profile + kind) --
 
-export const encryptPassphrase = (plaintext: string) =>
-  invoke<string>("encrypt_profile_passphrase", { plaintext });
+export type SecretKind = "passphrase" | "password";
 
-export const decryptPassphrase = (encrypted: string) =>
-  invoke<string>("decrypt_profile_passphrase", { encrypted });
+export const saveProfileSecret = (profileId: string, kind: SecretKind, secret: string) =>
+  invoke<void>("save_profile_secret", { profileId, kind, secret });
+
+export const getProfileSecret = (profileId: string, kind: SecretKind) =>
+  invoke<string | null>("get_profile_secret", { profileId, kind });
+
+export const clearProfileSecret = (profileId: string, kind: SecretKind) =>
+  invoke<void>("clear_profile_secret", { profileId, kind });
 
 // -- Agent --
 
@@ -49,8 +54,9 @@ export const probeHost = (
   username: string,
   keyPath: string,
   passphrase?: string | null,
+  password?: string | null,
   authMode?: string | null,
-) => invoke<HostStatus>("probe_host", { host, port, username, keyPath, passphrase: passphrase ?? null, authMode: authMode ?? null });
+) => invoke<HostStatus>("probe_host", { host, port, username, keyPath, passphrase: passphrase ?? null, password: password ?? null, authMode: authMode ?? null });
 
 export const connectSsh = (
   profileId: string,
@@ -59,6 +65,7 @@ export const connectSsh = (
   username: string,
   keyPath: string,
   passphrase?: string | null,
+  password?: string | null,
   authMode?: string | null,
 ) =>
   invoke<string>("connect_ssh", {
@@ -68,6 +75,7 @@ export const connectSsh = (
     username,
     keyPath,
     passphrase: passphrase ?? null,
+    password: password ?? null,
     authMode: authMode ?? null,
   });
 

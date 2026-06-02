@@ -91,6 +91,8 @@ pub async fn delete_profile(
     if config.last_profile_id.as_deref() == Some(&profile_id) {
         config.last_profile_id = None;
     }
+    let _ = crate::config::keychain_delete(&crate::config::passphrase_account(&profile_id));
+    let _ = crate::config::keychain_delete(&crate::config::password_account(&profile_id));
     state.update_config(&app, config).await
 }
 
@@ -158,22 +160,40 @@ pub async fn set_window_vibrancy(
     Ok(active)
 }
 
-// passphrase
+// secrets - key passphrases + host passwords live in the os keychain, keyed by
+// profile id. kind is "passphrase" or "password".
 
-#[tauri::command]
-pub async fn encrypt_profile_passphrase(
-    app: AppHandle,
-    plaintext: String,
-) -> Result<String, String> {
-    crate::config::encrypt_passphrase(&app, &plaintext)
+fn secret_account(profile_id: &str, kind: &str) -> Result<String, String> {
+    match kind {
+        "passphrase" => Ok(crate::config::passphrase_account(profile_id)),
+        "password" => Ok(crate::config::password_account(profile_id)),
+        other => Err(format!("unknown secret kind: {other}")),
+    }
 }
 
 #[tauri::command]
-pub async fn decrypt_profile_passphrase(
-    app: AppHandle,
-    encrypted: String,
-) -> Result<String, String> {
-    crate::config::decrypt_passphrase(&app, &encrypted)
+pub async fn save_profile_secret(
+    profile_id: String,
+    kind: String,
+    secret: String,
+) -> Result<(), String> {
+    crate::config::keychain_set(&secret_account(&profile_id, &kind)?, &secret)
+}
+
+#[tauri::command]
+pub async fn get_profile_secret(
+    profile_id: String,
+    kind: String,
+) -> Result<Option<String>, String> {
+    Ok(crate::config::keychain_get(&secret_account(
+        &profile_id,
+        &kind,
+    )?))
+}
+
+#[tauri::command]
+pub async fn clear_profile_secret(profile_id: String, kind: String) -> Result<(), String> {
+    crate::config::keychain_delete(&secret_account(&profile_id, &kind)?)
 }
 
 // agent
@@ -198,17 +218,50 @@ pub async fn list_agent_identities() -> Result<Vec<AgentIdentityInfo>, String> {
 
 // connection
 
+fn auth_mode_from_str(s: Option<&str>) -> crate::config::AuthMode {
+    use crate::config::AuthMode;
+    match s {
+        Some("agent") => AuthMode::Agent,
+        Some("password") => AuthMode::Password,
+        _ => AuthMode::KeyFile,
+    }
+}
+
+// one door for all three auth styles. secrets come in already resolved - the caller
+// decides whether they were typed fresh or pulled from the keychain.
+async fn dispatch_connect(
+    auth_mode: crate::config::AuthMode,
+    host: &str,
+    port: u16,
+    username: &str,
+    key_path: &str,
+    passphrase: Option<String>,
+    password: Option<String>,
+) -> Result<SshSession, String> {
+    use crate::config::AuthMode;
+    match auth_mode {
+        AuthMode::Agent => SshSession::connect_with_agent(host, port, username).await,
+        AuthMode::Password => {
+            let pw = password.ok_or("password auth selected but no password was provided")?;
+            SshSession::connect_with_password(host, port, username, &pw).await
+        }
+        AuthMode::KeyFile => SshSession::connect(host, port, username, key_path, passphrase).await,
+    }
+}
+
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn probe_host(
     host: String,
     port: u16,
     username: String,
     key_path: String,
     passphrase: Option<String>,
+    password: Option<String>,
     auth_mode: Option<String>,
 ) -> Result<HostStatus, String> {
-    let use_agent = auth_mode.as_deref() == Some("agent");
-    let result = probe_host_inner(host, port, username, key_path, passphrase, use_agent).await;
+    let mode = auth_mode_from_str(auth_mode.as_deref());
+    let result = probe_host_inner(host, port, username, key_path, passphrase, password, mode).await;
     match result {
         Ok(status) => Ok(status),
         Err(_) => Ok(HostStatus {
@@ -224,19 +277,20 @@ pub async fn probe_host(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn probe_host_inner(
     host: String,
     port: u16,
     username: String,
     key_path: String,
     passphrase: Option<String>,
-    use_agent: bool,
+    password: Option<String>,
+    auth_mode: crate::config::AuthMode,
 ) -> Result<HostStatus, String> {
-    let mut session = if use_agent {
-        SshSession::connect_with_agent(&host, port, &username).await?
-    } else {
-        SshSession::connect(&host, port, &username, &key_path, passphrase).await?
-    };
+    let mut session = dispatch_connect(
+        auth_mode, &host, port, &username, &key_path, passphrase, password,
+    )
+    .await?;
 
     let latency = session.ping().await?;
 
@@ -295,14 +349,14 @@ pub async fn connect_ssh(
     username: String,
     key_path: String,
     passphrase: Option<String>,
+    password: Option<String>,
     auth_mode: Option<String>,
 ) -> Result<String, String> {
-    let use_agent = auth_mode.as_deref() == Some("agent");
-    let session = if use_agent {
-        SshSession::connect_with_agent(&host, port, &username).await?
-    } else {
-        SshSession::connect(&host, port, &username, &key_path, passphrase).await?
-    };
+    let mode = auth_mode_from_str(auth_mode.as_deref());
+    let session = dispatch_connect(
+        mode, &host, port, &username, &key_path, passphrase, password,
+    )
+    .await?;
     let session_id = uuid::Uuid::new_v4().to_string();
 
     // update last_connected on the profile
@@ -452,31 +506,30 @@ pub async fn open_ssh_shell(
         .ok_or("Profile not found")?
         .clone();
 
-    // figure out auth
-    let use_agent = profile.auth_mode == crate::config::AuthMode::Agent;
-    let pp = if !use_agent && profile.has_passphrase {
-        // try saved passphrase first, fall back to provided one
-        if let Some(ref encrypted) = profile.saved_passphrase {
-            crate::config::decrypt_passphrase(&app, encrypted).ok()
-        } else {
-            passphrase
-        }
+    // no frontend in this path (new tab / reconnect), so saved secrets come straight
+    // from the keychain. the passphrase arg is a fallback for an unsaved one.
+    let mode = profile.auth_mode.clone();
+    let pp = if mode == crate::config::AuthMode::KeyFile && profile.has_passphrase {
+        crate::config::keychain_get(&crate::config::passphrase_account(&profile.id)).or(passphrase)
+    } else {
+        None
+    };
+    let pw = if mode == crate::config::AuthMode::Password {
+        crate::config::keychain_get(&crate::config::password_account(&profile.id))
     } else {
         None
     };
 
-    let session = if use_agent {
-        SshSession::connect_with_agent(&profile.host, profile.port, &profile.username).await?
-    } else {
-        SshSession::connect(
-            &profile.host,
-            profile.port,
-            &profile.username,
-            &profile.key_path,
-            pp,
-        )
-        .await?
-    };
+    let session = dispatch_connect(
+        mode,
+        &profile.host,
+        profile.port,
+        &profile.username,
+        &profile.key_path,
+        pp,
+        pw,
+    )
+    .await?;
 
     let session_id = uuid::Uuid::new_v4().to_string();
 
