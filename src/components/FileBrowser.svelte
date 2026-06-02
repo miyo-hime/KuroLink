@@ -17,9 +17,10 @@
     sessionId: string;
     onClose: () => void;
     onOpenFile: (sessionId: string, path: string) => void;
+    onOpenSplit: (sessionId: string, path: string, dir: "h" | "v") => void;
   }
 
-  let { sessionId, onClose, onOpenFile }: Props = $props();
+  let { sessionId, onClose, onOpenFile, onOpenSplit }: Props = $props();
 
   let home = $state("");
   let root = $state<SftpEntry[] | null>(null);
@@ -147,6 +148,11 @@
 
   function uploadToRoot() {
     transfers.uploadPicker(sessionId, home, reloadRoot);
+  }
+
+  function openSplit(target: FileMenuTarget, dir: "h" | "v") {
+    menu = null;
+    onOpenSplit(sessionId, target.entry.path, dir);
   }
 
   function startDownload(target: FileMenuTarget) {
@@ -468,6 +474,9 @@
           <button class="fb-context-item" onclick={() => startNewFolder(target)}>New Folder</button>
           <button class="fb-context-item" onclick={() => startUpload(target)}>Upload Here</button>
         {:else}
+          <button class="fb-context-item" onclick={() => { menu = null; onOpenFile(sessionId, target.entry.path); }}>Open</button>
+          <button class="fb-context-item" onclick={() => openSplit(target, "v")}>Open to the Side</button>
+          <button class="fb-context-item" onclick={() => openSplit(target, "h")}>Open Below</button>
           <button class="fb-context-item" onclick={() => startDownload(target)}>Download</button>
         {/if}
         <button class="fb-context-item" onclick={() => startRename(target)}>Rename</button>
@@ -514,32 +523,14 @@
 </aside>
 
 <style>
+  /* no border-right - the pane divider draws the edge between panes. */
   .file-browser {
     display: flex;
     flex-direction: column;
-    width: 250px;
-    flex-shrink: 0;
+    width: 100%;
     height: 100%;
-    border-right: 1px solid var(--border-subtle);
     background: rgba(8, 8, 16, 0.4);
     position: relative;
-  }
-
-  .file-browser::after {
-    content: "";
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    right: 0;
-    width: 1px;
-    background: linear-gradient(
-      180deg,
-      transparent,
-      var(--border-glow) 20%,
-      rgba(var(--accent-rgb), 0.5) 50%,
-      var(--border-glow) 80%,
-      transparent
-    );
   }
 
   .file-browser.dropping {

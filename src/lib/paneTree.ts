@@ -17,33 +17,44 @@ export function findPane(node: PaneNode, paneId: string): Pane | null {
   return findPane(node.a, paneId) ?? findPane(node.b, paneId);
 }
 
+// identity-preserving on purpose: same node back when fn changed nothing under it. a
+// re-titled shell mustn't mint a fresh node for its files-pane sibling, or that subtree
+// re-renders and the file browser remounts mid-load, wiping the tree it just fetched.
 export function mapPanes(node: PaneNode, fn: (p: Pane) => Pane): PaneNode {
-  if (node.kind === "leaf") return { kind: "leaf", pane: fn(node.pane) };
-  return { ...node, a: mapPanes(node.a, fn), b: mapPanes(node.b, fn) };
+  if (node.kind === "leaf") {
+    const pane = fn(node.pane);
+    return pane === node.pane ? node : { kind: "leaf", pane };
+  }
+  const a = mapPanes(node.a, fn);
+  const b = mapPanes(node.b, fn);
+  return a === node.a && b === node.b ? node : { ...node, a, b };
 }
 
+// before=true puts the new pane in the leading slot (a), so ratio is *its* share.
 export function splitAt(
   node: PaneNode,
   targetPaneId: string,
   dir: "h" | "v",
   newPane: Pane,
   ratio = 0.5,
+  before = false,
 ): PaneNode {
   if (node.kind === "leaf") {
     if (node.pane.paneId !== targetPaneId) return node;
+    const fresh = leafOf(newPane);
     return {
       kind: "split",
       id: `split:${crypto.randomUUID()}`,
       dir,
-      a: node,
-      b: leafOf(newPane),
+      a: before ? fresh : node,
+      b: before ? node : fresh,
       ratio,
     };
   }
   return {
     ...node,
-    a: splitAt(node.a, targetPaneId, dir, newPane, ratio),
-    b: splitAt(node.b, targetPaneId, dir, newPane, ratio),
+    a: splitAt(node.a, targetPaneId, dir, newPane, ratio, before),
+    b: splitAt(node.b, targetPaneId, dir, newPane, ratio, before),
   };
 }
 
