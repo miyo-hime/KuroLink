@@ -851,8 +851,8 @@ pub async fn fetch_local_stats(state: State<'_, AppState>) -> Result<SystemStats
     Ok(local::fetch_local_system_stats(&mut sys, &mut disks))
 }
 
-/// get the --path arg if KuroLink was launched with one
-/// (for future "Open KuroLink here" context menu integration)
+/// the --path arg explorer's "Open KuroLink here" hands us, if any. boot reads it once
+/// and drops a local shell into that folder.
 #[tauri::command]
 pub async fn get_launch_path(state: State<'_, AppState>) -> Result<Option<String>, String> {
     Ok(state.launch_path.lock().await.clone())

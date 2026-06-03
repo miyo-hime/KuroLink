@@ -18,11 +18,13 @@
     onDropHint: (hint: DropHint) => void;
     onGraftTab: (tabId: string, targetPaneId: string, side: GraftSide) => void;
     onOpenFilePane: (sessionId: string, path: string, targetPaneId: string, side: GraftSide) => void;
+    // a pane's host identifier color ("r, g, b") or null - marks which host it's on
+    paneColor: (pane: Pane) => string | null;
     // (pane, visible, focused, multiPane) -> the actual TerminalPanel/EditorPanel
     leaf: Snippet<[Pane, boolean, boolean, boolean]>;
   }
 
-  let { node, activePaneId, tabVisible, multiPane, dropHint, onFocusPane, onSetRatio, onClosePane, onDropHint, onGraftTab, onOpenFilePane, leaf }: Props = $props();
+  let { node, activePaneId, tabVisible, multiPane, dropHint, paneColor, onFocusPane, onSetRatio, onClosePane, onDropHint, onGraftTab, onOpenFilePane, leaf }: Props = $props();
 
   const TAB_DRAG = "application/x-kurolink-tab";
   const FILE_DRAG = "application/x-kurolink-file";
@@ -95,10 +97,13 @@
 </script>
 
 {#if node.kind === "leaf"}
+  {@const hostRgb = paneColor(node.pane)}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="pane"
     class:pane-focused={tabVisible && node.pane.paneId === activePaneId}
+    class:pane-tagged={hostRgb !== null}
+    style={hostRgb ? `--host-rgb: ${hostRgb}` : ""}
     data-pane-id={node.pane.paneId}
     onpointerdowncapture={() => onFocusPane(node.pane.paneId)}
     ondragover={(e) => onPaneDragOver(e, node.pane.paneId)}
@@ -121,7 +126,7 @@
 {:else}
   <div class="pane-split pane-split-{node.dir}" bind:this={splitEl}>
     <div class="pane-slot" style="flex-grow: {node.ratio};">
-      <PaneTree node={node.a} {activePaneId} {tabVisible} {multiPane} {dropHint} {onFocusPane} {onSetRatio} {onClosePane} {onDropHint} {onGraftTab} {onOpenFilePane} {leaf} />
+      <PaneTree node={node.a} {activePaneId} {tabVisible} {multiPane} {dropHint} {paneColor} {onFocusPane} {onSetRatio} {onClosePane} {onDropHint} {onGraftTab} {onOpenFilePane} {leaf} />
     </div>
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
@@ -129,7 +134,7 @@
       onpointerdown={(e) => startDrag(e, node.dir)}
     ></div>
     <div class="pane-slot" style="flex-grow: {1 - node.ratio};">
-      <PaneTree node={node.b} {activePaneId} {tabVisible} {multiPane} {dropHint} {onFocusPane} {onSetRatio} {onClosePane} {onDropHint} {onGraftTab} {onOpenFilePane} {leaf} />
+      <PaneTree node={node.b} {activePaneId} {tabVisible} {multiPane} {dropHint} {paneColor} {onFocusPane} {onSetRatio} {onClosePane} {onDropHint} {onGraftTab} {onOpenFilePane} {leaf} />
     </div>
   </div>
 {/if}
@@ -203,6 +208,25 @@
     pointer-events: none;
     z-index: 15;
     box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.55);
+  }
+
+  /* host identifier: a thin top edge + matching focus ring in the host's color, so a
+     prod pane and a staging pane never blur together in a split. untagged panes stay neutral. */
+  .pane-tagged::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    pointer-events: none;
+    z-index: 15;
+    background: rgb(var(--host-rgb));
+    box-shadow: 0 0 6px rgba(var(--host-rgb), 0.5);
+  }
+
+  .pane-tagged.pane-focused::after {
+    box-shadow: inset 0 0 0 1px rgba(var(--host-rgb), 0.65);
   }
 
   .pane-split {

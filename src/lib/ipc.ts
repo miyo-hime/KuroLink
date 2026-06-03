@@ -145,6 +145,22 @@ export const getActiveSessions = () =>
 export const getLaunchPath = () =>
   invoke<string | null>("get_launch_path");
 
+// -- "Open KuroLink here" explorer integration (portable, HKCU, windows-only) --
+
+export interface ContextMenuStatus {
+  registered: boolean;
+  stale: boolean;
+}
+
+export const contextMenuStatus = () =>
+  invoke<ContextMenuStatus>("context_menu_status");
+
+export const registerContextMenu = () =>
+  invoke<void>("register_context_menu");
+
+export const unregisterContextMenu = () =>
+  invoke<void>("unregister_context_menu");
+
 // -- Window tear-off --
 
 // stash a live tab and spawn a window to adopt it. x/y/w/h are physical px.

@@ -46,6 +46,12 @@
   function head(tab: Tab): Pane | null {
     return findPane(tab.layout, tab.activePaneId);
   }
+  // the active pane's host color, if its profile carries one
+  function hostColor(tab: Tab): string | null {
+    const b = head(tab)?.backend;
+    const pid = b?.kind === "ssh" || b?.kind === "editor" ? b.profileId : null;
+    return (pid && profiles.find((p) => p.id === pid)?.accent_rgb) || null;
+  }
   function isSplit(tab: Tab): boolean {
     return panesOf(tab.layout).length > 1;
   }
@@ -207,12 +213,15 @@
   <div class="tab-scroll">
     {#each tabs as tab, index (tab.id)}
       {@const h = head(tab)}
+      {@const hc = hostColor(tab)}
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <div
         class="tab"
         class:tab-active={tab.id === activeTabId}
+        class:tab-tagged={hc !== null}
         class:tab-dragging={dragIndex === index}
         class:tab-drop-target={dropIndex === index && dragIndex !== index}
+        style={hc ? `--host-rgb: ${hc}` : ""}
         onclick={() => onSelectTab(tab.id)}
         onmousedown={(e) => handleMouseDown(e, tab.id)}
         oncontextmenu={(e) => handleContextMenu(e, tab.id)}
@@ -225,6 +234,7 @@
         tabindex="0"
         aria-selected={tab.id === activeTabId}
       >
+        {#if hc}<span class="tab-tag"></span>{/if}
         {#if h?.backend.kind === "ssh"}
           <span class="tab-indicator tab-indicator-ssh" title="SSH: {h.backend.profileName}"></span>
         {:else if h?.backend.kind === "editor"}
@@ -437,6 +447,28 @@
     width: 100%;
     background: var(--accent-primary);
     opacity: 0.6;
+  }
+
+  /* host identifier stripe. replaces the default active pip on tagged tabs so the two
+     don't fight over the left edge. */
+  .tab-tag {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: rgb(var(--host-rgb));
+    opacity: 0.5;
+    transition: opacity var(--transition-fast);
+  }
+
+  .tab-active .tab-tag {
+    opacity: 1;
+    box-shadow: 0 0 8px rgb(var(--host-rgb));
+  }
+
+  .tab-tagged.tab-active::before {
+    content: none;
   }
 
   /* tab type indicator dot */

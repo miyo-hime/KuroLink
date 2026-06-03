@@ -3,6 +3,7 @@ mod commands;
 mod config;
 mod local;
 mod sftp;
+mod shellext;
 mod ssh;
 mod state;
 
@@ -64,6 +65,9 @@ pub fn run() {
             commands::sftp_upload_bytes,
             commands::cancel_transfer,
             chrome::set_max_button_rect,
+            shellext::context_menu_status,
+            shellext::register_context_menu,
+            shellext::unregister_context_menu,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

@@ -1,23 +1,58 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { appearance } from "../lib/appearance.svelte";
   import { PRESETS, FONT_OPTIONS, CURSOR_STYLE_OPTIONS, type ColorKey } from "../lib/themes";
+  import { DEFAULT_LOCAL_SHELLS, type LocalShellId } from "../lib/types";
+  import { rgbToHex, hexToRgb } from "../lib/colorHex";
+  import {
+    contextMenuStatus,
+    registerContextMenu,
+    unregisterContextMenu,
+    type ContextMenuStatus,
+  } from "../lib/ipc";
 
   const MIN_SIZE = 10;
   const MAX_SIZE = 24;
 
-  // accent lives as an "r, g, b" triplet (it feeds a css var); the swatch input
-  // speaks hex, so we translate at the boundary. everything else is already hex.
-  function rgbToHex(rgb: string): string {
-    const [r, g, b] = rgb.split(",").map((s) => parseInt(s.trim(), 10));
-    const h = (n: number) => (isNaN(n) ? 0 : n).toString(16).padStart(2, "0");
-    return `#${h(r)}${h(g)}${h(b)}`;
+  let menuStatus = $state<ContextMenuStatus | null>(null);
+  let menuBusy = $state(false);
+
+  async function refreshMenuStatus() {
+    try {
+      menuStatus = await contextMenuStatus();
+    } catch {
+      menuStatus = null;
+    }
   }
-  function hexToRgb(hex: string): string {
-    const m = hex.replace("#", "");
-    const r = parseInt(m.slice(0, 2), 16);
-    const g = parseInt(m.slice(2, 4), 16);
-    const b = parseInt(m.slice(4, 6), 16);
-    return `${r}, ${g}, ${b}`;
+  onMount(refreshMenuStatus);
+
+  async function toggleContextMenu() {
+    if (menuBusy) return;
+    menuBusy = true;
+    try {
+      if (menuStatus?.registered) await unregisterContextMenu();
+      else await registerContextMenu();
+      await refreshMenuStatus();
+    } catch (e) {
+      console.error("context menu toggle failed:", e);
+    } finally {
+      menuBusy = false;
+    }
+  }
+
+  // exe moved out from under a stale registration - rewrite the keys to point at where
+  // we actually live now
+  async function relinkContextMenu() {
+    if (menuBusy) return;
+    menuBusy = true;
+    try {
+      await registerContextMenu();
+      await refreshMenuStatus();
+    } catch (e) {
+      console.error("context menu relink failed:", e);
+    } finally {
+      menuBusy = false;
+    }
   }
 
   let a = $derived(appearance.active);
@@ -237,6 +272,40 @@ listening on :<span style="color:{a.ghostty.magenta}">8080</span>
             </label>
           {/each}
         </div>
+      </div>
+
+      <!-- explorer integration -->
+      <div class="section">
+        <div class="section-label">EXPLORER <span class="section-hint">right-click a folder &rsaquo; open a shell there</span></div>
+        <button
+          class="ext-toggle {menuStatus?.registered ? 'ext-on' : ''}"
+          onclick={toggleContextMenu}
+          disabled={menuBusy}
+        >
+          <span class="ext-pip"></span>
+          {menuStatus?.registered ? "OPEN KUROLINK HERE · ON" : "ADD 'OPEN KUROLINK HERE'"}
+        </button>
+        {#if menuStatus?.stale}
+          <div class="ext-stale">
+            kurolink moved since this was registered, so the menu points at the old spot.
+            <button class="ext-relink" onclick={relinkContextMenu} disabled={menuBusy}>re-link</button>
+          </div>
+        {/if}
+        <div class="fx-note">portable + no admin (writes your own user keys). on windows 11 it lives under "show more options".</div>
+
+        <div class="ctrl-row">
+          <span class="ctrl-label">SHELL</span>
+          <select
+            class="ctrl-select"
+            value={appearance.launchShell}
+            onchange={(e) => appearance.setLaunchShell(e.currentTarget.value as LocalShellId)}
+          >
+            {#each DEFAULT_LOCAL_SHELLS as s (s.id)}
+              <option value={s.id}>{s.label}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="fx-note">which shell a folder-open drops you into. falls back if it's not installed.</div>
       </div>
 
       <button class="reset-btn" onclick={() => appearance.resetOverrides()}>
@@ -649,6 +718,71 @@ listening on :<span style="color:{a.ghostty.magenta}">8080</span>
     font-size: 0.58rem;
     font-weight: 600;
     letter-spacing: 0.08em;
+  }
+
+  /* explorer integration toggle */
+  .ext-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    background: var(--bg-terminal);
+    border: 1px solid var(--border-subtle);
+    border-left: 2px solid var(--hud-line);
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    padding: 0.6rem 0;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+  }
+  .ext-toggle:hover:not(:disabled) {
+    border-color: var(--border-glow);
+    border-left-color: var(--accent-primary);
+    background: rgba(var(--accent-rgb), 0.04);
+  }
+  .ext-toggle:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .ext-pip {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    transition: all var(--transition-fast);
+  }
+  .ext-on {
+    color: var(--accent-success);
+    border-color: rgba(34, 197, 94, 0.4);
+    border-left-color: var(--accent-success);
+  }
+  .ext-on .ext-pip {
+    background: var(--accent-success);
+    box-shadow: 0 0 8px var(--accent-success);
+  }
+  .ext-stale {
+    color: var(--accent-warning);
+    font-size: 0.6rem;
+    line-height: 1.4;
+  }
+  .ext-relink {
+    background: none;
+    border: none;
+    color: var(--accent-warning);
+    font-family: inherit;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 0;
+  }
+  .ext-relink:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   .reset-btn {

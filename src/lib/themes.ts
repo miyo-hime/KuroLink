@@ -2,6 +2,8 @@
 // glass tint, a font, and which crt toys are on. the store merges a preset with
 // user overrides into a ResolvedTheme that the canvas + the whole HUD read from.
 
+import type { LocalShellId } from "./types";
+
 export type Vibrancy = "acrylic" | "blur" | "none";
 export type CursorStyle = "block" | "bar" | "underline";
 
@@ -293,6 +295,8 @@ export interface ThemeOverrides {
 export interface StoredAppearance {
   presetId: string;
   overrides: ThemeOverrides;
+  // rides in the same frontend-owned blob: which local shell a folder-launch spawns.
+  launchShell?: LocalShellId;
 }
 
 export interface ResolvedTheme {

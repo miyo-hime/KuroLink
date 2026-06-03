@@ -46,6 +46,10 @@ pub struct ConnectionProfile {
     pub saved_passphrase: Option<String>,
     #[serde(default)]
     pub auth_mode: AuthMode,
+    // "r, g, b" host identifier color - the frontend tags this host's tabs and panes
+    // with it. rust just round-trips it; none = no tag.
+    #[serde(default)]
+    pub accent_rgb: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -12,6 +12,9 @@ export interface ConnectionProfile {
   has_passphrase: boolean;
   save_password: boolean;
   auth_mode: AuthMode;
+  // "r, g, b" host identifier color - tags this host's tabs and panes so you can tell
+  // prod from staging at a glance. doesn't touch the cockpit theme. null = no tag.
+  accent_rgb: string | null;
 }
 
 export interface AgentIdentityInfo {

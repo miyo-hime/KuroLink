@@ -36,12 +36,13 @@
     initialSessionId: string | null;
     initialProfile: ConnectionProfile | null;
     initialLocalShell: LocalShellId | null;
+    initialCwd: string | null;
     initialRestore: SavedSession | null;
     initialAdopt: Tab | null;
     onDisconnected: () => void;
   }
 
-  let { initialSessionId, initialProfile, initialLocalShell, initialRestore, initialAdopt, onDisconnected }: Props = $props();
+  let { initialSessionId, initialProfile, initialLocalShell, initialCwd, initialRestore, initialAdopt, onDisconnected }: Props = $props();
 
   const STATS_POLL_MS = 10_000;
 
@@ -115,6 +116,13 @@
   // sftp needs a live ssh session - local panes and dead links don't get the panel
   let filesAvailable = $derived(activeSessionId != null && !isActiveLost);
 
+  // a pane's host color, if its profile carries one - local + profile-less panes get none
+  function paneHostColor(pane: Pane): string | null {
+    const b = pane.backend;
+    const pid = b.kind === "ssh" || b.kind === "editor" ? b.profileId : null;
+    return (pid && profiles.find((p) => p.id === pid)?.accent_rgb) || null;
+  }
+
   // first time a live ssh session lands in focus, swing the browser open - if you're
   // on a remote box you almost certainly want its fs in view. once only (plain flag,
   // not $state), so closing it sticks and reconnects/pane-hops don't keep re-popping it.
@@ -154,9 +162,9 @@
     }
   }
 
-  async function createLocalTab(shellType: LocalShellId) {
+  async function createLocalTab(shellType: LocalShellId, cwd: string | null = null) {
     try {
-      const channelId = await openLocalShell(shellType, 80, 24);
+      const channelId = await openLocalShell(shellType, 80, 24, cwd);
       tabCount += 1;
       addTab({ paneId: channelId, title: `${shellType} ${tabCount}`, backend: { kind: "local", shellType } });
     } catch (e) {
@@ -927,10 +935,13 @@
     } else if (initialRestore) {
       restoreSession(initialRestore);
     } else if (initialLocalShell) {
-      createLocalTab(initialLocalShell);
+      createLocalTab(initialLocalShell, initialCwd);
     } else if (initialSessionId && initialProfile) {
       createSshTabFromSession(initialSessionId, initialProfile);
     }
+    // seed the lookup so this host's tab/pane color shows on the first paint, before
+    // the full profile list lands
+    if (initialProfile) profiles = [initialProfile];
     getProfiles().then((p) => (profiles = p)).catch(() => {});
     detectLocalShells().then((s) => (localShells = s)).catch(() => {});
 
@@ -1117,6 +1128,7 @@
             tabVisible={tab.id === activeTabId}
             multiPane={panesOf(tab.layout).length > 1}
             dropHint={paneDropHint}
+            paneColor={paneHostColor}
             onFocusPane={(pid) => focusPane(tab.id, pid)}
             onSetRatio={(sid, r) => setTabRatio(tab.id, sid, r)}
             onClosePane={closePane}

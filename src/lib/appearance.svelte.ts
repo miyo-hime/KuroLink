@@ -7,6 +7,7 @@ import {
   type ResolvedTheme,
 } from "./themes";
 import { getAppearance, saveAppearance, setWindowVibrancy } from "./ipc";
+import type { LocalShellId } from "./types";
 
 function mergeOverrides(base: ThemeOverrides, patch: ThemeOverrides): ThemeOverrides {
   return {
@@ -39,6 +40,9 @@ class AppearanceStore {
   overrides = $state<ThemeOverrides>({});
   settingsOpen = $state(false);
   loaded = $state(false);
+  // which local shell a folder-launch ("open kurolink here") drops into. not a theme,
+  // but it rides the same frontend-owned blob - rust round-trips it, never reads it.
+  launchShell = $state<LocalShellId>("powershell");
 
   #lastVibrancy = "";
   #saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -54,6 +58,7 @@ class AppearanceStore {
         this.presetId = normalizePresetId(stored.presetId);
         this.overrides = stored.overrides ?? {};
       }
+      if (stored?.launchShell) this.launchShell = stored.launchShell;
     } catch {
       // no saved appearance, the default preset stands
     }
@@ -95,9 +100,22 @@ class AppearanceStore {
       this.#lastVibrancy = a.vibrancy;
       setWindowVibrancy(a.vibrancy).then(applyGlass).catch(() => {});
     }
+    this.#persist();
+  }
+
+  setLaunchShell(id: LocalShellId) {
+    this.launchShell = id;
+    this.#persist();
+  }
+
+  #persist() {
     if (this.#saveTimer) clearTimeout(this.#saveTimer);
     this.#saveTimer = setTimeout(() => {
-      saveAppearance({ presetId: this.presetId, overrides: this.overrides }).catch(() => {});
+      saveAppearance({
+        presetId: this.presetId,
+        overrides: this.overrides,
+        launchShell: this.launchShell,
+      }).catch(() => {});
     }, 250);
   }
 }

@@ -18,6 +18,8 @@
     getSession,
   } from "../lib/ipc";
   import { savedLeaves } from "../lib/savedSession";
+  import { appearance } from "../lib/appearance.svelte";
+  import { rgbToHex, hexToRgb } from "../lib/colorHex";
   import KuroLinkLogo from "./KuroLinkLogo.svelte";
   import Titlebar from "./Titlebar.svelte";
 
@@ -52,6 +54,7 @@
     has_passphrase: false,
     save_password: false,
     auth_mode: "agent",
+    accent_rgb: null,
   };
 
   function statClass(value: number, cautionAt: number, criticalAt: number): string {
@@ -171,6 +174,7 @@
       has_passphrase: p.has_passphrase ?? false,
       save_password: p.save_password ?? false,
       auth_mode: p.auth_mode ?? "agent",
+      accent_rgb: p.accent_rgb ?? null,
     };
   }
 
@@ -235,6 +239,13 @@
     }
   }
 
+  // toggling the color on seeds it from the current theme accent, so the picker opens
+  // on a sane color instead of black
+  function handleTintToggle(e: Event) {
+    const checked = (e.currentTarget as HTMLInputElement).checked;
+    form.accent_rgb = checked ? appearance.active.accentRgb : null;
+  }
+
   async function handleProbe() {
     if (!formValid) return;
     probing = true;
@@ -281,6 +292,7 @@
         has_passphrase: form.has_passphrase,
         save_password: keepPassword,
         auth_mode: form.auth_mode,
+        accent_rgb: form.accent_rgb,
       };
       await saveProfile(profile);
 
@@ -476,6 +488,22 @@
                 </label>
               </div>
             {/if}
+            <div class="form-row form-row-checkbox form-row-tint">
+              <label class="checkbox-label">
+                <input type="checkbox" checked={form.accent_rgb !== null} onchange={handleTintToggle} />
+                <span class="toggle-track"></span>
+                <span class="toggle-label-text">HOST COLOR</span>
+              </label>
+              {#if form.accent_rgb !== null}
+                <input
+                  class="tint-swatch"
+                  type="color"
+                  value={rgbToHex(form.accent_rgb)}
+                  oninput={(e) => (form.accent_rgb = hexToRgb(e.currentTarget.value))}
+                  title="Identifier color for this host - tags its tabs and panes"
+                />
+              {/if}
+            </div>
           </div>
 
           <!-- status - always visible, four visual states -->
@@ -1125,6 +1153,24 @@
     background: var(--accent-primary);
     box-shadow: 0 0 4px var(--accent-primary);
   }
+
+  /* host color - swatch rides beside the toggle */
+  .form-row-tint {
+    justify-content: space-between;
+  }
+
+  .tint-swatch {
+    width: 30px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid var(--border-subtle);
+    border-left: 2px solid var(--accent-primary);
+    background: none;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .tint-swatch::-webkit-color-swatch-wrapper { padding: 2px; }
+  .tint-swatch::-webkit-color-swatch { border: none; }
 
   /* auth mode selector - three segments, one lit */
 
