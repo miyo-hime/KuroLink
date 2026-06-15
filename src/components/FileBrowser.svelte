@@ -388,6 +388,7 @@
   ondragover={onPanelDragOver}
   ondragleave={onPanelDragLeave}
   ondrop={onPanelDrop}
+  ondropcapture={() => (dropActive = false)}
 >
   <header class="fb-header">
     <span class="fb-title">FILES</span>

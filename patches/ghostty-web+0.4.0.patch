@@ -1,5 +1,5 @@
 diff --git a/node_modules/ghostty-web/dist/ghostty-web.js b/node_modules/ghostty-web/dist/ghostty-web.js
-index a4ca427..787ac93 100644
+index a4ca427..d1c881b 100644
 --- a/node_modules/ghostty-web/dist/ghostty-web.js
 +++ b/node_modules/ghostty-web/dist/ghostty-web.js
 @@ -1363,7 +1363,7 @@ class $ {
@@ -11,7 +11,16 @@ index a4ca427..787ac93 100644
      return { width: E, height: D, baseline: i };
    }
    /**
-@@ -1400,7 +1400,7 @@ class $ {
+@@ -1397,10 +1397,16 @@ class $ {
+   render(A, B = !1, g = 0, E, C = 1) {
+     var U;
+     this.currentBuffer = A;
++    // KL: viewportY rides in fractional from pixel wheels/trackpads, but this is an
++    // integer cell grid. raw g in the boundary test (t < g) vs floor(g) in the line
++    // index disagree by a row and drop row floor(g) - it reads OOB scrollback, comes
++    // back null, leaves last frame's line stale. floor once so the whole render speaks
++    // whole lines. (this is the upper-third ghost.)
++    g = Math.floor(g);
      const I = A.getCursor(), D = A.getDimensions(), i = E ? E.getScrollbackLength() : 0;
      (U = A.needsFullRedraw) != null && U.call(A) && (B = !0), (this.canvas.width !== D.cols * this.metrics.width * this.devicePixelRatio || this.canvas.height !== D.rows * this.metrics.height * this.devicePixelRatio) && (this.resize(D.cols, D.rows), B = !0), g !== this.lastViewportY && (B = !0, this.lastViewportY = g);
      const s = I.x !== this.lastCursorPosition.x || I.y !== this.lastCursorPosition.y;
@@ -20,7 +29,7 @@ index a4ca427..787ac93 100644
        if (!B && !A.isRowDirty(I.y)) {
          const t = A.getLine(I.y);
          t && this.renderLine(t, I.y, D.cols);
-@@ -1476,7 +1476,7 @@ class $ {
+@@ -1476,7 +1482,7 @@ class $ {
          c = A.getLine(t);
        c && this.renderLine(c, t, D.cols);
      }
@@ -29,7 +38,7 @@ index a4ca427..787ac93 100644
    }
    /**
     * Render a single line using two-pass approach:
-@@ -1491,7 +1491,7 @@ class $ {
+@@ -1491,7 +1497,7 @@ class $ {
     */
    renderLine(A, B, g) {
      const E = B * this.metrics.height;
@@ -38,7 +47,7 @@ index a4ca427..787ac93 100644
      for (let C = 0; C < A.length; C++) {
        const I = A[C];
        I.width !== 0 && this.renderCellBackground(I, C, B);
-@@ -1649,13 +1649,17 @@ class $ {
+@@ -1649,13 +1655,17 @@ class $ {
     * @param opacity Opacity level (0-1) for fade in/out effect
     */
    renderScrollbar(A, B, g, E = 1) {
@@ -61,7 +70,7 @@ index a4ca427..787ac93 100644
    }
    getMetrics() {
      return { ...this.metrics };
-@@ -1712,7 +1716,7 @@ class $ {
+@@ -1712,7 +1722,7 @@ class $ {
     * Clear entire canvas
     */
    clear() {
@@ -70,7 +79,7 @@ index a4ca427..787ac93 100644
    }
    /**
     * Cleanup resources
-@@ -2180,8 +2184,8 @@ class IA {
+@@ -2180,8 +2190,8 @@ class IA {
        const E = this.wasmTerm.getScrollbackLength();
        if (E === 0)
          return;
@@ -81,7 +90,7 @@ index a4ca427..787ac93 100644
          g.preventDefault(), g.stopPropagation(), g.stopImmediatePropagation();
          const M = w - k * 2, a = this.rows, h = E + a, G = Math.max(20, a / h * M), U = this.viewportY / E, t = k + (M - G) * (1 - U);
          if (D >= t && D <= t + G)
-@@ -2387,7 +2391,27 @@ class IA {
+@@ -2387,7 +2397,27 @@ class IA {
     */
    writeInternal(A, B) {
      var g;
@@ -110,7 +119,7 @@ index a4ca427..787ac93 100644
    }
    /**
     * Write data with newline
-@@ -2682,6 +2706,19 @@ class IA {
+@@ -2682,6 +2712,19 @@ class IA {
      if (!this.canvas || !this.renderer || !this.linkDetector || !this.wasmTerm)
        return;
      const B = this.canvas.getBoundingClientRect(), g = Math.floor((A.clientX - B.left) / this.renderer.charWidth), C = Math.floor((A.clientY - B.top) / this.renderer.charHeight);

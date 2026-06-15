@@ -968,10 +968,19 @@
     let detachClose: (() => void) | undefined;
     if (!isMainWindow) {
       getCurrentWindow()
-        .onCloseRequested(async () => {
-          for (const p of allPanes()) {
-            if (p.backend.kind === "ssh" || p.backend.kind === "local") await closeShell(p.paneId).catch(() => {});
-          }
+        .onCloseRequested(async (event) => {
+          // a wedged ssh channel must not trap the window open - awaiting closeShell
+          // straight is what made close need a manual session-kill first. fire them all,
+          // race a deadline, tear down regardless. worst case a channel outlives the
+          // window till app exit, which beats a window that won't close.
+          event.preventDefault();
+          const cleanup = Promise.allSettled(
+            allPanes()
+              .filter((p) => p.backend.kind === "ssh" || p.backend.kind === "local")
+              .map((p) => closeShell(p.paneId)),
+          );
+          await Promise.race([cleanup, new Promise((r) => setTimeout(r, 500))]);
+          await getCurrentWindow().destroy();
         })
         .then((fn) => (detachClose = fn))
         .catch(() => {});
